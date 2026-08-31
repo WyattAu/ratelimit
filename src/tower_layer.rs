@@ -71,7 +71,12 @@ where
                     .status(StatusCode::TOO_MANY_REQUESTS)
                     .header("Retry-After", "1")
                     .body(Default::default())
-                    .unwrap();
+                    .unwrap_or_else(|_| {
+                        http::Response::builder()
+                            .status(StatusCode::TOO_MANY_REQUESTS)
+                            .body(Default::default())
+                            .expect("valid response")
+                    });
                 return Ok(response);
             }
 
@@ -99,7 +104,8 @@ fn insert_rate_limit_headers(headers: &mut HeaderMap, result: &crate::metrics::R
     }
     let reset_secs = result
         .reset_at
-        .duration_since(std::time::Instant::now())
+        .checked_duration_since(std::time::Instant::now())
+        .unwrap_or_default()
         .as_secs();
     if let Ok(val) = reset_secs.to_string().parse() {
         headers.insert("X-RateLimit-Reset", val);
