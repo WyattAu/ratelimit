@@ -24,6 +24,7 @@ tracing = "0.1"
 [features]
 default = ["in-memory"]
 in-memory = ["dep:dashmap"]
+sliding-window = ["dep:dashmap"]
 redis = ["dep:redis"]
 tower = ["dep:tower", "dep:tower-layer", "dep:http", "dep:axum"]
 

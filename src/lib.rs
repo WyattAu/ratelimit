@@ -32,10 +32,16 @@ mod quota;
 #[cfg(feature = "redis")]
 mod redis;
 
+#[cfg(feature = "sliding-window")]
+mod sliding_window;
+
 #[cfg(feature = "tower")]
 mod tower_layer;
 
 pub use backend::{InMemoryBackend, RateLimitBackend};
+
+#[cfg(feature = "sliding-window")]
+pub use sliding_window::SlidingWindowBackend;
 pub use error::RateLimitError;
 pub use metrics::RateLimitResult;
 pub use quota::Quota;
