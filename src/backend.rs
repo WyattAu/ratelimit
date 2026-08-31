@@ -14,16 +14,19 @@ pub trait RateLimitBackend: Send + Sync + 'static {
 ///
 /// Suitable for single-node deployments. Each key tracks its last-allowed
 /// timestamp and a token-bucket counter.
+#[derive(Clone)]
 pub struct InMemoryBackend {
     entries: dashmap::DashMap<String, Entry>,
 }
 
+#[derive(Clone)]
 struct Entry {
     last_check: Instant,
     remaining: u32,
 }
 
 impl InMemoryBackend {
+    /// Create a new in-memory backend.
     pub fn new() -> Self {
         Self {
             entries: dashmap::DashMap::new(),
@@ -70,8 +73,14 @@ impl RateLimitBackend for InMemoryBackend {
 
         RateLimitResult {
             allowed,
-            remaining,
+            remaining: remaining as u64,
             reset_at,
+            limit: burst as u64,
+            retry_after: if allowed {
+                None
+            } else {
+                Some(interval)
+            },
         }
     }
 }

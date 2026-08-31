@@ -99,6 +99,9 @@ fn extract_key<B>(req: &http::Request<B>) -> String {
 }
 
 fn insert_rate_limit_headers(headers: &mut HeaderMap, result: &crate::metrics::RateLimitResult) {
+    if let Ok(val) = result.limit.to_string().parse() {
+        headers.insert("X-RateLimit-Limit", val);
+    }
     if let Ok(val) = result.remaining.to_string().parse() {
         headers.insert("X-RateLimit-Remaining", val);
     }

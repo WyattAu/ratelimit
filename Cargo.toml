@@ -9,7 +9,7 @@ readme = "README.md"
 repository = "https://github.com/WyattAu/ratelimit"
 
 [dependencies]
-tokio = { version = "1", features = ["time", "sync"] }
+tokio = { version = "1", features = ["time", "sync", "rt"] }
 dashmap = { version = "6", optional = true }
 async-trait = "0.1"
 thiserror = "2"
@@ -19,6 +19,7 @@ tower-layer = { version = "0.3", optional = true }
 http = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
 redis = { version = "0.25", optional = true, features = ["tokio-comp", "connection-manager"] }
+tracing = "0.1"
 
 [features]
 default = ["in-memory"]
@@ -26,5 +27,10 @@ in-memory = ["dep:dashmap"]
 redis = ["dep:redis"]
 tower = ["dep:tower", "dep:tower-layer", "dep:http", "dep:axum"]
 
+[[bench]]
+name = "ratelimit_bench"
+harness = false
+
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 tokio = { version = "1", features = ["full"] }
