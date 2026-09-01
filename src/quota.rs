@@ -40,6 +40,14 @@ impl Quota {
         self
     }
 
+    /// Create a quota with a custom interval and burst size.
+    ///
+    /// `interval` is the minimum time between allowed requests.
+    /// `burst` is the maximum number of requests that can be made in rapid succession.
+    pub fn from_parts(interval: Duration, burst: u32) -> Self {
+        Self { interval, burst }
+    }
+
     /// The minimum interval between requests.
     pub fn interval(&self) -> Duration {
         self.interval
