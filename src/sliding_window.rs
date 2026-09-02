@@ -57,10 +57,7 @@ impl RateLimitBackend for SlidingWindowBackend {
 
         let remaining = if allowed { limit - count - 1 } else { 0 };
 
-        let reset_at = entry
-            .front()
-            .map(|&ts| ts + window)
-            .unwrap_or(now + window);
+        let reset_at = entry.front().map(|&ts| ts + window).unwrap_or(now + window);
 
         let retry_after = if allowed {
             None

@@ -40,11 +40,11 @@ mod tower_layer;
 
 pub use backend::{InMemoryBackend, RateLimitBackend};
 
-#[cfg(feature = "sliding-window")]
-pub use sliding_window::SlidingWindowBackend;
 pub use error::RateLimitError;
 pub use metrics::RateLimitResult;
 pub use quota::Quota;
+#[cfg(feature = "sliding-window")]
+pub use sliding_window::SlidingWindowBackend;
 
 #[cfg(feature = "redis")]
 pub use redis::RedisBackend;
@@ -91,10 +91,10 @@ pub use keyed::KeyedRateLimiter;
 mod keyed {
     use dashmap::DashMap;
 
+    use crate::RateLimiter;
     use crate::backend::RateLimitBackend;
     use crate::metrics::RateLimitResult;
     use crate::quota::Quota;
-    use crate::RateLimiter;
 
     /// Per-key rate limiter that tracks separate rate limits for each key.
     ///
@@ -363,9 +363,11 @@ mod tests {
         let r = limiter.check("client-1").await;
         let headers = r.headers();
         assert!(headers.iter().any(|(k, _)| *k == "X-RateLimit-Limit"));
-        assert!(headers
-            .iter()
-            .any(|(k, v)| *k == "X-RateLimit-Remaining" && v == "9"));
+        assert!(
+            headers
+                .iter()
+                .any(|(k, v)| *k == "X-RateLimit-Remaining" && v == "9")
+        );
     }
 
     #[test]

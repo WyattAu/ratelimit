@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use redis::aio::MultiplexedConnection;
 use redis::Script;
+use redis::aio::MultiplexedConnection;
 
 use crate::backend::RateLimitBackend;
 use crate::metrics::RateLimitResult;
@@ -30,9 +30,7 @@ impl RedisBackend {
     }
 
     /// Connect using a `redis::Client`.
-    pub async fn from_client(
-        client: redis::Client,
-    ) -> Result<Self, crate::error::RateLimitError> {
+    pub async fn from_client(client: redis::Client) -> Result<Self, crate::error::RateLimitError> {
         let conn = client
             .get_multiplexed_async_connection()
             .await

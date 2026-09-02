@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use throttle_kit::{InMemoryBackend, RateLimitError, RateLimiter, Quota};
+use throttle_kit::{InMemoryBackend, Quota, RateLimitError, RateLimiter};
 
 // ---------------------------------------------------------------------------
 // Quota creation

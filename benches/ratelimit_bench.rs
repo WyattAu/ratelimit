@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use ratelimit::{InMemoryBackend, Quota, RateLimiter};
 use std::sync::Arc;
 
@@ -44,10 +44,7 @@ fn bench_check_contention(c: &mut Criterion) {
     c.bench_function("rate_limit_check_4_threads", |b| {
         b.iter_custom(|iters| {
             let backend = InMemoryBackend::new();
-            let limiter = Arc::new(RateLimiter::new(
-                Quota::per_second(1_000_000),
-                backend,
-            ));
+            let limiter = Arc::new(RateLimiter::new(Quota::per_second(1_000_000), backend));
             let start = std::time::Instant::now();
             rt.block_on(async {
                 let mut handles = Vec::with_capacity(4);

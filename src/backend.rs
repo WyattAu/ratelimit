@@ -46,10 +46,13 @@ impl RateLimitBackend for InMemoryBackend {
         let interval = quota.interval();
         let burst = quota.burst;
 
-        let mut entry = self.entries.entry(key.to_string()).or_insert_with(|| Entry {
-            last_check: Instant::now(),
-            remaining: burst,
-        });
+        let mut entry = self
+            .entries
+            .entry(key.to_string())
+            .or_insert_with(|| Entry {
+                last_check: Instant::now(),
+                remaining: burst,
+            });
 
         let now = Instant::now();
         let elapsed = now.duration_since(entry.last_check);
@@ -58,8 +61,7 @@ impl RateLimitBackend for InMemoryBackend {
         let replenished = (elapsed.as_nanos() as u64 / interval.as_nanos() as u64) as u32;
         if replenished > 0 {
             entry.remaining = (entry.remaining + replenished).min(burst);
-            let consumption =
-                Duration::from_nanos(replenished as u64 * interval.as_nanos() as u64);
+            let consumption = Duration::from_nanos(replenished as u64 * interval.as_nanos() as u64);
             entry.last_check += consumption;
         }
 
@@ -76,11 +78,7 @@ impl RateLimitBackend for InMemoryBackend {
             remaining: remaining as u64,
             reset_at,
             limit: burst as u64,
-            retry_after: if allowed {
-                None
-            } else {
-                Some(interval)
-            },
+            retry_after: if allowed { None } else { Some(interval) },
         }
     }
 }

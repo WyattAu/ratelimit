@@ -7,9 +7,9 @@ use http::{HeaderMap, StatusCode};
 use tower_layer::Layer;
 use tower_service::Service;
 
+use crate::RateLimiter;
 use crate::backend::RateLimitBackend;
 use crate::quota::Quota;
-use crate::RateLimiter;
 
 /// Tower layer that applies rate limiting to inner services.
 #[derive(Clone)]
