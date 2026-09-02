@@ -74,10 +74,14 @@ impl RateLimitBackend for InMemoryBackend {
         let reset_at = entry.last_check + interval;
 
         #[cfg(feature = "metrics")]
-        if allowed {
-            metrics::counter!("ratelimit_allowed_total", "key" => key.to_string()).increment(1);
-        } else {
-            metrics::counter!("ratelimit_rejected_total", "key" => key.to_string()).increment(1);
+        {
+            let utilization = (burst - remaining) as f64 / burst as f64;
+            metrics::histogram!("ratelimit_utilization").record(utilization);
+            if allowed {
+                metrics::counter!("ratelimit_allowed_total", "key" => key.to_string()).increment(1);
+            } else {
+                metrics::counter!("ratelimit_rejected_total", "key" => key.to_string()).increment(1);
+            }
         }
 
         RateLimitResult {
