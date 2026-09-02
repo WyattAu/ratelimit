@@ -1,6 +1,6 @@
 [package]
 name = "throttle-kit"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -22,6 +22,7 @@ tower-layer = { version = "0.3", optional = true }
 http = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
 redis = { version = "0.25", optional = true, features = ["tokio-comp", "connection-manager"] }
+rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
 tracing = "0.1"
 metrics = { version = "0.24", optional = true }
 
@@ -32,6 +33,7 @@ sliding-window = ["dep:dashmap"]
 redis = ["dep:redis"]
 tower = ["dep:tower", "dep:tower-layer", "dep:http", "dep:axum"]
 metrics = ["dep:metrics"]
+sqlite = ["dep:rusqlite"]
 
 [[bench]]
 name = "ratelimit_bench"

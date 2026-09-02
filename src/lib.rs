@@ -32,6 +32,9 @@ mod quota;
 #[cfg(feature = "redis")]
 mod redis;
 
+#[cfg(feature = "sqlite")]
+mod sqlite;
+
 #[cfg(feature = "sliding-window")]
 mod sliding_window;
 
@@ -48,6 +51,9 @@ pub use sliding_window::SlidingWindowBackend;
 
 #[cfg(feature = "redis")]
 pub use redis::RedisBackend;
+
+#[cfg(feature = "sqlite")]
+pub use sqlite::SqliteBackend;
 
 use std::sync::Arc;
 
