@@ -23,6 +23,7 @@ http = { version = "1", optional = true }
 axum = { version = "0.8", optional = true }
 redis = { version = "0.25", optional = true, features = ["tokio-comp", "connection-manager"] }
 tracing = "0.1"
+metrics = { version = "0.24", optional = true }
 
 [features]
 default = ["in-memory"]
@@ -30,6 +31,7 @@ in-memory = ["dep:dashmap"]
 sliding-window = ["dep:dashmap"]
 redis = ["dep:redis"]
 tower = ["dep:tower", "dep:tower-layer", "dep:http", "dep:axum"]
+metrics = ["dep:metrics"]
 
 [[bench]]
 name = "ratelimit_bench"
