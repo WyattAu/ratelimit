@@ -128,7 +128,10 @@ mod keyed {
     pub struct KeyedRateLimiter<B: RateLimitBackend + Clone> {
         limiters: DashMap<String, RateLimiter<B>>,
         default_quota: Quota,
-        backend: B,
+        // Stored as Arc to avoid cloning the entire backend (e.g. DashMap)
+        // for every new key. RateLimiter already holds Arc<B> internally so
+        // per-key cost is just an atomic refcount bump.
+        backend: std::sync::Arc<B>,
     }
 
     impl<B: RateLimitBackend + Clone> KeyedRateLimiter<B> {
@@ -137,7 +140,7 @@ mod keyed {
             Self {
                 limiters: DashMap::new(),
                 default_quota,
-                backend,
+                backend: std::sync::Arc::new(backend),
             }
         }
 
@@ -149,7 +152,10 @@ mod keyed {
         pub fn with_quota_for_key(&self, key: &str, quota: Quota) {
             self.limiters.insert(
                 key.to_string(),
-                RateLimiter::new(quota, self.backend.clone()),
+                RateLimiter {
+                    quota,
+                    backend: std::sync::Arc::clone(&self.backend),
+                },
             );
         }
 
@@ -158,8 +164,9 @@ mod keyed {
             let limiter = self
                 .limiters
                 .entry(key.to_string())
-                .or_insert_with(|| {
-                    RateLimiter::new(self.default_quota.clone(), self.backend.clone())
+                .or_insert_with(|| RateLimiter {
+                    quota: self.default_quota.clone(),
+                    backend: std::sync::Arc::clone(&self.backend),
                 })
                 .value()
                 .clone();
