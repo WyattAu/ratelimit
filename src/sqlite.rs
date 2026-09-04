@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -77,14 +77,14 @@ impl RateLimitBackend for SqliteBackend {
         };
 
         let allowed = new_remaining > 0;
-        let final_remaining = if allowed { new_remaining - 1 } else { new_remaining };
+        let final_remaining = if allowed {
+            new_remaining - 1
+        } else {
+            new_remaining
+        };
 
         // Update last emission time
-        let new_last_ms = if allowed {
-            now
-        } else {
-            last_ms
-        };
+        let new_last_ms = if allowed { now } else { last_ms };
 
         let _ = conn.execute(
             "INSERT OR REPLACE INTO rate_limits (key, last_emission_ms, remaining) VALUES (?1, ?2, ?3)",

@@ -80,7 +80,8 @@ impl RateLimitBackend for InMemoryBackend {
             if allowed {
                 metrics::counter!("ratelimit_allowed_total", "key" => key.to_string()).increment(1);
             } else {
-                metrics::counter!("ratelimit_rejected_total", "key" => key.to_string()).increment(1);
+                metrics::counter!("ratelimit_rejected_total", "key" => key.to_string())
+                    .increment(1);
             }
         }
 
