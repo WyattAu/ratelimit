@@ -5,6 +5,11 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-05
+
+### Fixed
+- Pinned proptest max_global_rejects in code — assume-throttle abort no longer masquerades as a test failure in CI/release gates
+
 ## [0.4.0] - 2026-09-05
 
 ### Security

@@ -729,7 +729,15 @@ fn adversarial_entry() -> impl Strategy<Value = String> {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(512))]
+    // max_global_rejects raised: the adversarial generator rejects heavily
+    // (invalid header values / malformed entries are filtered by assume) and
+    // proptest's default 1024-reject throttle aborts with "Too many global
+    // rejects" — an abort that looks like a failure but is not. Pinned here
+    // so CI, coverage runs, and release gates never trip on it.
+    #![proptest_config(ProptestConfig {
+        max_global_rejects: 20000,
+        ..ProptestConfig::with_cases(512)
+    })]
 
     #[test]
     fn prop_adversarial_chain_matches_oracle(
