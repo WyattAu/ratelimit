@@ -1,6 +1,15 @@
+// Benchmarks run on fixed, known-good inputs; unwrap failures abort the
+// bench run visibly, which is the desired behavior here.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
+
 use criterion::{Criterion, criterion_group, criterion_main};
-use ratelimit::{InMemoryBackend, Quota, RateLimiter};
 use std::sync::Arc;
+use throttle_kit::{InMemoryBackend, Quota, RateLimiter};
 
 fn bench_check_single_key(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();

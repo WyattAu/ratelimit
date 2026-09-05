@@ -1,11 +1,10 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use http::{HeaderMap, StatusCode};
+use tower::Service;
 use tower_layer::Layer;
-use tower_service::Service;
 
 use crate::RateLimiter;
 use crate::backend::RateLimitBackend;
@@ -18,6 +17,7 @@ pub struct RateLimitLayer<B: RateLimitBackend> {
 }
 
 impl<B: RateLimitBackend> RateLimitLayer<B> {
+    /// Create a layer that applies `quota` through the given backend.
     pub fn new(quota: Quota, backend: B) -> Self {
         Self {
             limiter: RateLimiter::new(quota, backend),
@@ -25,7 +25,10 @@ impl<B: RateLimitBackend> RateLimitLayer<B> {
     }
 }
 
-impl<S, B: RateLimitBackend> Layer<S> for RateLimitLayer<B> {
+impl<S, B> Layer<S> for RateLimitLayer<B>
+where
+    B: RateLimitBackend + Clone,
+{
     type Service = RateLimitService<S, B>;
 
     fn layer(&self, inner: S) -> Self::Service {
@@ -48,7 +51,12 @@ impl<S, ReqBody, B> Service<http::Request<ReqBody>> for RateLimitService<S, B>
 where
     S: Service<http::Request<ReqBody>, Response = http::Response<ReqBody>> + Clone + Send + 'static,
     S::Future: Send + 'static,
-    B: RateLimitBackend,
+    B: RateLimitBackend + Clone,
+    // The 429 short-circuit must synthesize a response body of the
+    // inner service's body type, so callers must use a `Default` body;
+    // `Send` is required because the request is moved into the future.
+    B: RateLimitBackend + Clone,
+    ReqBody: Default + Send + 'static,
 {
     type Response = http::Response<ReqBody>;
     type Error = S::Error;
@@ -60,23 +68,19 @@ where
 
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
         let key = extract_key(&req);
-        let mut limiter = self.limiter.clone();
+        let limiter = self.limiter.clone();
         let mut inner = self.inner.clone();
 
         Box::pin(async move {
             let result = limiter.check(&key).await;
 
             if !result.allowed {
-                let response = http::Response::builder()
-                    .status(StatusCode::TOO_MANY_REQUESTS)
-                    .header("Retry-After", "1")
-                    .body(Default::default())
-                    .unwrap_or_else(|_| {
-                        http::Response::builder()
-                            .status(StatusCode::TOO_MANY_REQUESTS)
-                            .body(Default::default())
-                            .expect("valid response")
-                    });
+                let mut response = http::Response::new(ReqBody::default());
+                *response.status_mut() = StatusCode::TOO_MANY_REQUESTS;
+                response.headers_mut().insert(
+                    http::header::HeaderName::from_static("retry-after"),
+                    http::header::HeaderValue::from_static("1"),
+                );
                 return Ok(response);
             }
 

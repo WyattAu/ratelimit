@@ -9,7 +9,7 @@
 //! # Quick Start
 //!
 //! ```no_run
-//! use ratelimit::{RateLimiter, Quota, InMemoryBackend};
+//! use throttle_kit::{RateLimiter, Quota, InMemoryBackend};
 //!
 //! #[tokio::main]
 //! async fn main() {
@@ -40,6 +40,9 @@ mod sliding_window;
 
 #[cfg(feature = "tower")]
 mod tower_layer;
+
+#[cfg(feature = "tower")]
+pub use tower_layer::{RateLimitLayer, RateLimitService};
 
 pub use backend::{InMemoryBackend, RateLimitBackend};
 
@@ -83,6 +86,10 @@ impl<B: RateLimitBackend> RateLimiter<B> {
     /// Blocks the current thread until the check completes.
     /// Useful for synchronous frameworks (e.g. Actix, Rocket).
     pub fn check_sync(&self, key: &str) -> RateLimitResult {
+        // INVARIANT: building a current-thread runtime fails only on I/O
+        // or allocation errors; a synchronous API that owns its runtime
+        // has no meaningful recovery path.
+        #[allow(clippy::expect_used)]
         let rt = tokio::runtime::Builder::new_current_thread()
             .build()
             .expect("failed to create tokio runtime for sync check");
@@ -111,7 +118,7 @@ mod keyed {
     /// # Example
     ///
     /// ```no_run
-    /// use ratelimit::{KeyedRateLimiter, Quota, InMemoryBackend};
+    /// use throttle_kit::{KeyedRateLimiter, Quota, InMemoryBackend};
     ///
     /// #[tokio::main]
     /// async fn main() {
@@ -178,6 +185,10 @@ mod keyed {
         /// Blocks the current thread until the check completes.
         /// Useful for synchronous frameworks (e.g. Actix, Rocket).
         pub fn check_sync(&self, key: &str) -> RateLimitResult {
+            // INVARIANT: building a current-thread runtime fails only on
+            // I/O or allocation errors; a synchronous API that owns its
+            // runtime has no meaningful recovery path.
+            #[allow(clippy::expect_used)]
             let rt = tokio::runtime::Builder::new_current_thread()
                 .build()
                 .expect("failed to create tokio runtime for sync check");
@@ -186,6 +197,15 @@ mod keyed {
     }
 }
 
+// Tests exercise failure paths and invariants directly; unwrap/expect,
+// slicing, and panicking asserts are acceptable here — violations
+// surface as test failures, not production panics.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

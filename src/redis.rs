@@ -66,9 +66,11 @@ impl RedisBackend {
             .await
             .map_err(|e| crate::error::RateLimitError::BackendError(e.to_string()))?;
 
-        let allowed = result[0] != 0;
-        let remaining = result[1] as u32;
-        let retry_after_ms = result[2] as u64;
+        // The script returns a 3-element table; treat a short reply as
+        // "deny" rather than panicking on attacker- or failure-shaped data.
+        let allowed = result.first().is_some_and(|&v| v != 0);
+        let remaining = result.get(1).copied().unwrap_or(0) as u32;
+        let retry_after_ms = result.get(2).copied().unwrap_or(0) as u64;
 
         Ok((allowed, remaining, retry_after_ms))
     }

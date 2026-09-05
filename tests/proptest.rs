@@ -1,3 +1,12 @@
+// Tests exercise hostile inputs directly; unwrap/expect, slicing, and
+// panicking asserts are the test signal here.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
+
 //! Property-based tests for throttle-kit crate.
 
 use proptest::prelude::*;

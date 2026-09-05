@@ -43,3 +43,9 @@ harness = false
 proptest = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
 tokio = { version = "1", features = ["full"] }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "warn"
+indexing_slicing = "deny"
+panic = "deny"

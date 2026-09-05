@@ -46,14 +46,22 @@ impl SqliteBackend {
 #[async_trait::async_trait]
 impl RateLimitBackend for SqliteBackend {
     async fn check(&self, key: &str, quota: &Quota) -> RateLimitResult {
-        let conn = self.conn.lock().unwrap();
+        // A poisoned mutex only means a peer panicked mid-check; the
+        // SQLite connection itself remains valid, so recover the guard
+        // instead of panicking (or deadlocking) on every later request.
+        let conn = match self.conn.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         let interval = quota.interval();
         let burst = quota.burst;
         let interval_ms = interval.as_millis() as u64;
 
+        // A pre-epoch system clock is a platform misconfiguration; treat
+        // it as 0 rather than panicking inside a request path.
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as u64;
 
         // Read existing entry
@@ -115,6 +123,15 @@ impl RateLimitBackend for SqliteBackend {
     }
 }
 
+// Tests exercise failure paths and invariants directly; unwrap/expect,
+// slicing, and panicking asserts are acceptable here — violations
+// surface as test failures, not production panics.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

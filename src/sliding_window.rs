@@ -36,15 +36,12 @@ impl RateLimitBackend for SlidingWindowBackend {
         let window = quota.interval() * quota.burst;
         let limit = quota.burst as u64;
 
-        let mut entry = self
-            .entries
-            .entry(key.to_string())
-            .or_insert_with(VecDeque::new);
+        let mut entry = self.entries.entry(key.to_string()).or_default();
 
         let now = Instant::now();
         let window_start = now.checked_sub(window).unwrap_or(now);
 
-        while entry.front().map_or(false, |&ts| ts < window_start) {
+        while entry.front().is_some_and(|&ts| ts < window_start) {
             entry.pop_front();
         }
 
@@ -75,6 +72,15 @@ impl RateLimitBackend for SlidingWindowBackend {
     }
 }
 
+// Tests exercise failure paths and invariants directly; unwrap/expect,
+// slicing, and panicking asserts are acceptable here — violations
+// surface as test failures, not production panics.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 #[cfg(test)]
 mod tests {
     use super::*;
