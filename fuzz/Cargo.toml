@@ -1,0 +1,21 @@
+[package]
+name = "throttle-kit-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+http = "1"
+throttle-kit = { path = "..", features = ["tower"] }
+
+[[bin]]
+name = "fuzz_client_ip"
+path = "fuzz_targets/fuzz_client_ip.rs"
+test = false
+doc = false

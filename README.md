@@ -58,10 +58,15 @@ Override burst with `.allow_burst(n)`.
 
 ## Tower Integration
 
+By default the layer keys requests by the **client's socket address** and
+ignores `X-Forwarded-For` entirely (secure by default — a client-set XFF
+header cannot mint fresh budgets).
+
 ```rust,ignore
 use ratelimit::{RateLimiter, Quota, InMemoryBackend};
-use ratelimit::tower_layer::RateLimitLayer;
-use axum::{Router, routing::get};
+use ratelimit::RateLimitLayer;
+use axum::{Router, extract::ConnectInfo, routing::get};
+use std::net::SocketAddr;
 
 let backend = InMemoryBackend::new();
 let layer = RateLimitLayer::new(Quota::per_second(50), backend);
@@ -69,7 +74,48 @@ let layer = RateLimitLayer::new(Quota::per_second(50), backend);
 let app = Router::new()
     .route("/", get(handler))
     .layer(layer);
+
+// Serve with connect info so the layer can see the peer address.
+// Without it, requests are rejected with 503 (fail closed) unless a
+// MissingClientPolicy::FallbackKey is configured.
+let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+axum::serve(
+    listener,
+    app.into_make_service_with_connect_info::<SocketAddr>(),
+).await?;
 ```
+
+### Behind a proxy
+
+If the service sits behind proxies you control, tell the layer which
+peers it may believe, and how many header entries *your* infrastructure
+appends in front of the direct peer (`num_trusted_hops`):
+
+```rust,ignore
+use ratelimit::client_ip::{ClientIpConfig, IpNet};
+
+// internet → ALB (trusted) → nginx (trusted, direct peer) → app
+// nginx appends the ALB's address, so XFF is "client, alb-ip";
+// the default num_trusted_hops = 1 skips "alb-ip" and yields "client".
+let layer = RateLimitLayer::new(Quota::per_second(50), backend)
+    .with_client_ip(ClientIpConfig {
+        trusted_proxies: vec![IpNet::parse("10.0.0.0/8").unwrap()],
+        num_trusted_hops: 1,                       // default
+        trusted_header: None,                      // default: X-Forwarded-For
+    });
+```
+
+Resolution walks the header RIGHT-TO-LEFT and never trusts entries left
+of the resolved one, so client-spoofed XFF values are ignored. For a
+single `internet → nginx → app` proxy, set `num_trusted_hops: 0`.
+Platforms with a dedicated header (`CF-Connecting-IP`) can set
+`trusted_header`; same trust rules apply.
+
+Migrating from 0.3.0: if you were behind a proxy, you **must** configure
+`trusted_proxies` (the old trust-XFF-unconditionally behavior is gone);
+if your service is directly exposed, you need nothing — the default is
+stricter and safe. Callers keying by API keys instead of IP can use
+`.with_key_extractor(...)`.
 
 ## Comparison with governor
 

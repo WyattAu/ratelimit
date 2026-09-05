@@ -24,6 +24,16 @@
 //! }
 //! ```
 
+//! # Client identity (tower feature)
+//!
+//! The Tower layer keys requests by the client's socket address by
+//! default and ignores `X-Forwarded-For` (secure by default). Behind
+//! proxies you control, configure [`ClientIpConfig`]; see the
+//! [`client_ip`] module docs for the resolution algorithm and the
+//! README for axum wiring (`.into_make_service_with_connect_info`).
+//!
+//! [`ClientIpConfig`]: client_ip::ClientIpConfig
+
 mod backend;
 mod error;
 mod metrics;
@@ -39,10 +49,18 @@ mod sqlite;
 mod sliding_window;
 
 #[cfg(feature = "tower")]
+pub mod client_ip;
+
+#[cfg(feature = "tower")]
 mod tower_layer;
 
 #[cfg(feature = "tower")]
-pub use tower_layer::{RateLimitLayer, RateLimitService};
+pub use client_ip::{
+    ClientIpConfig, ClientIpError, ClientIpSource, IpNet, MissingClientIdentity,
+    MissingClientPolicy, ResolvedClient,
+};
+#[cfg(feature = "tower")]
+pub use tower_layer::{KeyExtractor, RateLimitLayer, RateLimitService};
 
 pub use backend::{InMemoryBackend, RateLimitBackend};
 
