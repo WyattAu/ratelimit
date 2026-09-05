@@ -78,3 +78,13 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
   for distributed deployments.
 - Tower `Layer` with `X-RateLimit-*` response headers.
 - Configurable burst / token-bucket capacity and presets.
+
+## [1.0.0] - 2026-09-05
+
+### Added
+- API declared stable; semver contract enforced via cargo-semver-checks CI gate
+- ClientIpConfig trusted-proxy identity (0.4.0) — production-proven with adversarial property + fuzz suites
+
+### Fixed
+- Proptest global-reject config pinned (CI flake)
+- InMemoryBackend correctly feature-gated
