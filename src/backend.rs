@@ -1,3 +1,4 @@
+#[cfg(feature = "in-memory")]
 use std::time::{Duration, Instant};
 
 use crate::metrics::RateLimitResult;
@@ -14,17 +15,20 @@ pub trait RateLimitBackend: Send + Sync + 'static {
 ///
 /// Suitable for single-node deployments. Each key tracks its last-allowed
 /// timestamp and a token-bucket counter.
+#[cfg(feature = "in-memory")]
 #[derive(Clone)]
 pub struct InMemoryBackend {
     entries: dashmap::DashMap<String, Entry>,
 }
 
+#[cfg(feature = "in-memory")]
 #[derive(Clone)]
 struct Entry {
     last_check: Instant,
     remaining: u32,
 }
 
+#[cfg(feature = "in-memory")]
 impl InMemoryBackend {
     /// Create a new in-memory backend.
     pub fn new() -> Self {
@@ -34,12 +38,14 @@ impl InMemoryBackend {
     }
 }
 
+#[cfg(feature = "in-memory")]
 impl Default for InMemoryBackend {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(feature = "in-memory")]
 #[async_trait::async_trait]
 impl RateLimitBackend for InMemoryBackend {
     async fn check(&self, key: &str, quota: &Quota) -> RateLimitResult {

@@ -450,6 +450,19 @@ fn req102_empty_xff_falls_back_to_peer() {
 }
 
 #[test]
+fn regression_v4mapped_spoof_after_empty_entries() {
+    // Regression for proptest seed
+    // `entries = ["::ffff:6.6.6.6", "", "", ""], hops = 3`: the
+    // right-to-left walk must skip the empty (malformed) entries and
+    // normalize the v4-mapped IPv6 address to plain IPv4.
+    let config = config_trusting_peer(3);
+    let headers = xff_headers("::ffff:6.6.6.6,,,");
+    let (ip, source) = resolved_ip(&headers, Some(TRUSTED_PEER), &config).unwrap();
+    assert_eq!(ip, SPOOFED);
+    assert_eq!(source, ClientIpSource::ForwardedHeader);
+}
+
+#[test]
 fn req102_whitespace_and_junk_entries_fall_back_to_peer() {
     let config = config_trusting_peer(1);
     // "  " trims to an empty (malformed) chosen entry.
