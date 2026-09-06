@@ -62,9 +62,9 @@ pub use client_ip::{
 #[cfg(feature = "tower")]
 pub use tower_layer::{KeyExtractor, RateLimitLayer, RateLimitService};
 
-pub use backend::RateLimitBackend;
 #[cfg(feature = "in-memory")]
 pub use backend::InMemoryBackend;
+pub use backend::RateLimitBackend;
 
 pub use error::RateLimitError;
 pub use metrics::RateLimitResult;

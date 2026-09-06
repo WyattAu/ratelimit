@@ -13,4 +13,44 @@ jobs:
       loom: false
       wasm: false
       miri: false
+      # criterion wall-clock benches: human-readable trend, non-gating.
+      # The pass/fail gate is the `perf-gate` job below (iai-callgrind,
+      # deterministic instruction counts).
       bench-regression: true
+
+  # Deterministic perf gate: iai-callgrind instruction counts on the
+  # RateLimiter::check hot path (benches/iai_hot_path.rs).
+  #
+  # Baseline workflow: every push to main re-saves the `main` baseline and
+  # caches it; PRs compare against it with --fail-fast (first regression
+  # fails the job). Baseline updates are INTENTIONAL — after merging a
+  # deliberate perf change, the next main push refreshes the reference.
+  perf-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install iai-callgrind runner
+        # valgrind is preinstalled on ubuntu-latest runners; iai-callgrind
+        # shells out to it (callgrind tool).
+        run: cargo install iai-callgrind-runner --locked
+      - name: Restore main baseline
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: target/iai
+          key: iai-baseline-main-notused-${{ github.run_id }}
+          restore-keys: iai-baseline-main-
+      - name: Save baseline (push to main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: cargo bench --bench iai_hot_path -- --save-baseline=main
+      - name: Regression gate (PRs)
+        if: github.event_name == 'pull_request'
+        run: cargo bench --bench iai_hot_path -- --baseline=main --fail-fast
+      - name: Save baseline cache (push to main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: target/iai
+          key: iai-baseline-main-${{ github.run_id }}

@@ -39,10 +39,17 @@ sqlite = ["dep:rusqlite"]
 name = "ratelimit_bench"
 harness = false
 
+# Deterministic CI perf gate (instruction counts under valgrind). Not run
+# locally unless valgrind is installed; see benches/iai_hot_path.rs.
+[[bench]]
+name = "iai_hot_path"
+harness = false
+
 [dev-dependencies]
 proptest = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
 tokio = { version = "1", features = ["full"] }
+iai-callgrind = "0.16"
 
 [lints.clippy]
 unwrap_used = "deny"
