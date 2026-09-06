@@ -117,7 +117,10 @@ async fn backend_allows_first_request() {
 
     let result = limiter.check("key-1").await;
     assert!(result.allowed);
-    assert_eq!(result.remaining, 4);
+    // GCRA remaining for a fresh key: floor((new_tat - now) / emission) = 1
+    // (matches the Redis GCRA backend; was token-bucket `burst - 1` before
+    // the shared `gcra_decide` core).
+    assert_eq!(result.remaining, 1);
     assert_eq!(result.limit, 5);
 }
 
@@ -171,7 +174,8 @@ fn sync_check_works() {
 
     let r = limiter.check_sync("sync-key");
     assert!(r.allowed);
-    assert_eq!(r.remaining, 9);
+    // GCRA fresh-key remaining (see backend_allows_first_request).
+    assert_eq!(r.remaining, 1);
 }
 
 #[test]

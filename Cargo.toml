@@ -51,6 +51,9 @@ criterion = { version = "0.5", features = ["html_reports"] }
 tokio = { version = "1", features = ["full"] }
 iai-callgrind = "0.16"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "warn"

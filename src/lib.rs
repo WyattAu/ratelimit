@@ -64,7 +64,7 @@ pub use tower_layer::{KeyExtractor, RateLimitLayer, RateLimitService};
 
 #[cfg(feature = "in-memory")]
 pub use backend::InMemoryBackend;
-pub use backend::RateLimitBackend;
+pub use backend::{RateLimitBackend, gcra_decide};
 
 pub use error::RateLimitError;
 pub use metrics::RateLimitResult;
@@ -332,7 +332,12 @@ mod tests {
         let limiter = RateLimiter::new(Quota::per_second(10), backend);
         let result = limiter.check("user-1").await;
         assert!(result.allowed);
-        assert_eq!(result.remaining, 9);
+        // GCRA remaining (matching the Redis GCRA backend): the number of
+        // conforming requests visible right now, floor((new_tat - now) /
+        // emission), which is 1 for a fresh key — not the token-bucket
+        // `burst - consumed` this backend reported before the pure
+        // `gcra_decide` core was extracted.
+        assert_eq!(result.remaining, 1);
         assert_eq!(result.limit, 10);
         assert!(result.retry_after.is_none());
     }
@@ -419,7 +424,7 @@ mod tests {
         assert!(
             headers
                 .iter()
-                .any(|(k, v)| *k == "X-RateLimit-Remaining" && v == "9")
+                .any(|(k, v)| *k == "X-RateLimit-Remaining" && v == "1")
         );
     }
 

@@ -6,6 +6,9 @@
     clippy::indexing_slicing,
     clippy::panic
 )]
+// This target exercises the tower-layer client-identity resolution, which
+// only exists under the `tower` feature (it links `http`/`axum` directly).
+#![cfg(feature = "tower")]
 
 //! Client identity resolution tests: CIDR bit-math edges, the
 //! right-to-left trust walk (REQ-THROTTLE-100..104), layer wiring, and
