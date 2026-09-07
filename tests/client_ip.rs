@@ -822,3 +822,65 @@ proptest! {
         let _ = resolve_client_identity(&headers, None, &config);
     }
 }
+
+// ---------------------------------------------------------------------------
+// resolve_from_request — request-level convenience wrapper
+// ---------------------------------------------------------------------------
+
+#[test]
+fn resolve_from_request_resolves_via_extensions_and_headers() {
+    let config = config_trusting_peer(1);
+    let mut request = http::Request::builder()
+        .header("x-forwarded-for", format!("{CLIENT}, 10.0.0.254"))
+        .body(())
+        .unwrap();
+    request
+        .extensions_mut()
+        .insert(axum::extract::ConnectInfo(SocketAddr::from((
+            [10, 0, 0, 1],
+            44300,
+        ))));
+    let resolved = throttle_kit::client_ip::resolve_from_request(&request, &config);
+    let resolved = resolved.unwrap();
+    assert_eq!(resolved.ip, CLIENT);
+    assert_eq!(resolved.source, ClientIpSource::ForwardedHeader);
+}
+
+#[test]
+fn resolve_from_request_without_peer_is_missing_identity() {
+    let config = config_trusting_peer(1);
+    let request = http::Request::builder().body(()).unwrap();
+    assert_eq!(
+        throttle_kit::client_ip::resolve_from_request(&request, &config),
+        Err(MissingClientIdentity)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// with_client_ip after a custom key extractor; poll_ready delegation
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn layer_with_client_ip_overrides_custom_extractor_and_defaults_to_reject() {
+    let extractor: throttle_kit::KeyExtractor = std::sync::Arc::new(|_, _| "tenant".to_string());
+    let layer = RateLimitLayer::new(Quota::per_second(1), InMemoryBackend::new())
+        .with_key_extractor(extractor)
+        .with_client_ip(config_trusting_peer(1));
+    // Keying switched to client-ip with the default (Reject) missing
+    // policy: a request with no ConnectInfo fails closed with 503 even
+    // though the custom extractor could have supplied a key.
+    let mut service = layer.layer(OkService);
+    let request = http::Request::builder().body(()).unwrap();
+    assert_eq!(
+        service.call(request).await.unwrap().status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+}
+
+#[test]
+fn layer_poll_ready_delegates_to_inner_service() {
+    let layer = RateLimitLayer::new(Quota::per_second(1), InMemoryBackend::new());
+    let mut service = layer.layer(OkService);
+    let mut cx = Context::from_waker(std::task::Waker::noop());
+    assert!(matches!(service.poll_ready(&mut cx), Poll::Ready(Ok(()))));
+}

@@ -210,4 +210,16 @@ mod tests {
         let r = limiter.check_sync("user-1");
         assert!(r.allowed);
     }
+
+    #[test]
+    fn init_fails_on_readonly_database() {
+        // The bootstrap CREATE TABLE cannot run on a read-only connection,
+        // so `init` must surface the error instead of half-initialising.
+        let conn = rusqlite::Connection::open_with_flags(
+            ":memory:",
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .unwrap();
+        assert!(SqliteBackend::init(conn).is_err());
+    }
 }
