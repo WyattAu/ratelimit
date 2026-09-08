@@ -139,3 +139,5 @@ Threat model: [THREAT-MODEL.md](THREAT-MODEL.md).
 ## Performance
 
 Measured hot-path SLOs and allocation profile: [PERF-SLO.md](PERF-SLO.md). Benchmarks run in CI (non-gating regression visibility against the saved `ci` baseline).
+
+Head-to-head numbers against governor (the leading GCRA crate), with an honest feature comparison: [COMPARISON.md](COMPARISON.md).

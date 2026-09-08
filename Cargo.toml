@@ -45,12 +45,18 @@ harness = false
 name = "iai_hot_path"
 harness = false
 
+[[bench]]
+name = "head_to_head"
+harness = false
+
 [dev-dependencies]
 proptest = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
 tokio = { version = "1", features = ["full"] }
 iai-callgrind = "0.16"
 redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+# Competitor for benches/head_to_head.rs (same GCRA algorithm).
+governor = { version = "0.10", default-features = false, features = ["std", "dashmap", "quanta"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
