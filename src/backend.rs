@@ -220,6 +220,18 @@ mod tests {
     }
 
     #[test]
+    fn gcra_decide_deny_with_now_greater_than_zero() {
+        // A denial with now > 0 pins the retry_after subtraction chain:
+        // new_tat = max(1300, 1000) + 100 = 1400, and the request conforms
+        // only while new_tat <= now + emission * burst (1400 <= 1300 fails),
+        // so retry_after must be exactly new_tat - now - emission * burst.
+        let (allowed, retry_after, remaining) = gcra_decide(1_000, 1_300, 100, 3);
+        assert!(!allowed);
+        assert_eq!(retry_after, 100);
+        assert_eq!(remaining, 0);
+    }
+
+    #[test]
     fn gcra_decide_extreme_inputs_no_overflow() {
         // All-u64 extremes: must not overflow or panic (u128 internals).
         // new_tat = 2*u64::MAX (as u128); emission*burst = u64::MAX^2, so
@@ -236,5 +248,41 @@ mod tests {
         assert!(allowed2);
         assert_eq!(retry_after2, 0);
         assert_eq!(remaining2, 1);
+    }
+
+    #[cfg(feature = "in-memory")]
+    #[tokio::test]
+    async fn in_memory_backend_reallows_after_real_elapsed_time() {
+        // The backend clock must advance with real time. Exhausting the
+        // burst and sleeping past one interval must re-enable the key; a
+        // constant-clock mutant never observes the sleep and stays denied.
+        let backend = InMemoryBackend::new();
+        let quota = Quota::per_second(10); // 100 ms interval, burst 10
+
+        // Ten rapid conforming requests exhaust the burst budget.
+        for i in 1..=10u64 {
+            let r = backend.check("clock", &quota).await;
+            assert!(r.allowed);
+            assert_eq!(r.remaining, i);
+        }
+        assert!(!backend.check("clock", &quota).await.allowed);
+
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        assert!(
+            backend.check("clock", &quota).await.allowed,
+            "key must re-conform after one full interval of real time"
+        );
+    }
+
+    #[cfg(feature = "in-memory")]
+    #[tokio::test]
+    async fn in_memory_reset_at_is_in_the_future_when_allowed() {
+        let backend = InMemoryBackend::new();
+        let r = backend.check("reset", &Quota::per_second(10)).await;
+        assert!(r.allowed);
+        assert!(
+            r.reset_at > std::time::Instant::now(),
+            "reset_at must be in the future for an allowed request"
+        );
     }
 }

@@ -209,3 +209,88 @@ fn insert_rate_limit_headers(headers: &mut HeaderMap, result: &crate::metrics::R
         headers.insert("X-RateLimit-Reset", val);
     }
 }
+
+// Tests exercise failure paths and invariants directly; unwrap/expect,
+// slicing, and panicking asserts are acceptable here — violations
+// surface as test failures, not production panics.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metrics::RateLimitResult;
+    use std::convert::Infallible;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    /// Backend that always allows with a full quota budget.
+    #[derive(Clone)]
+    struct AlwaysAllowBackend;
+
+    #[async_trait::async_trait]
+    impl RateLimitBackend for AlwaysAllowBackend {
+        async fn check(&self, _key: &str, quota: &Quota) -> RateLimitResult {
+            RateLimitResult {
+                allowed: true,
+                remaining: u64::from(quota.burst) - 1,
+                reset_at: Instant::now() + quota.interval(),
+                limit: u64::from(quota.burst),
+                retry_after: None,
+            }
+        }
+    }
+
+    /// Inner service whose `poll_ready` never becomes ready, so readiness
+    /// delegation is observable.
+    #[derive(Clone)]
+    struct PendingService;
+
+    impl Service<http::Request<()>> for PendingService {
+        type Response = http::Response<()>;
+        type Error = Infallible;
+        type Future = std::future::Ready<Result<Self::Response, Self::Error>>;
+
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+
+        fn call(&mut self, _req: http::Request<()>) -> Self::Future {
+            std::future::ready(Ok(http::Response::new(())))
+        }
+    }
+
+    fn layer_service() -> RateLimitService<PendingService, AlwaysAllowBackend> {
+        RateLimitLayer::new(Quota::per_second(10), AlwaysAllowBackend)
+            .with_key_extractor(Arc::new(|_, _| "test-key".to_string()))
+            .layer(PendingService)
+    }
+
+    #[test]
+    fn poll_ready_delegates_to_inner_service() {
+        let mut svc = layer_service();
+        let cx = &mut Context::from_waker(std::task::Waker::noop());
+        assert!(
+            matches!(svc.poll_ready(cx), Poll::Pending),
+            "readiness must come from the inner service"
+        );
+    }
+
+    #[tokio::test]
+    async fn inserts_rate_limit_headers_on_allowed_response() {
+        let mut svc = layer_service();
+        let response = svc
+            .call(http::Request::builder().body(()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let headers = response.headers();
+        assert_eq!(headers.get("X-RateLimit-Limit").unwrap(), "10");
+        assert_eq!(headers.get("X-RateLimit-Remaining").unwrap(), "9");
+        assert!(headers.contains_key("X-RateLimit-Reset"));
+    }
+}

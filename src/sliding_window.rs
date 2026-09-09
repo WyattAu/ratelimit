@@ -158,4 +158,52 @@ mod tests {
         let _ = SlidingWindowBackend::new();
         let _ = SlidingWindowBackend::default();
     }
+
+    #[tokio::test]
+    async fn sliding_window_resets_only_after_the_full_window() {
+        // window = interval * burst = 500 ms * 2 = 1 s for per_second(2).
+        // At 600 ms the recorded requests are still inside the true window,
+        // so the request must stay denied; a window computed by division
+        // (250 ms) would have expired them and re-allowed the request.
+        let backend = SlidingWindowBackend::new();
+        let quota = Quota::per_second(2);
+
+        assert!(backend.check("w", &quota).await.allowed);
+        assert!(backend.check("w", &quota).await.allowed);
+        assert!(!backend.check("w", &quota).await.allowed);
+
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        assert!(
+            !backend.check("w", &quota).await.allowed,
+            "requests inside the full window must still count"
+        );
+    }
+
+    #[tokio::test]
+    async fn sliding_window_reset_at_is_in_the_future_when_allowed() {
+        let backend = SlidingWindowBackend::new();
+        let r = backend.check("reset", &Quota::per_second(2)).await;
+        assert!(r.allowed);
+        assert!(
+            r.reset_at > std::time::Instant::now(),
+            "reset_at must be in the future for an allowed request"
+        );
+    }
+
+    #[tokio::test]
+    async fn sliding_window_retry_after_is_within_the_window() {
+        let backend = SlidingWindowBackend::new();
+        let quota = Quota::per_second(1); // window = 1 s
+
+        assert!(backend.check("retry", &quota).await.allowed);
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        let r2 = backend.check("retry", &quota).await;
+        assert!(!r2.allowed);
+        let retry = r2.retry_after.expect("denied request carries retry_after");
+        assert!(retry > Duration::ZERO, "retry_after must be positive");
+        assert!(
+            retry <= quota.interval(),
+            "retry_after must not exceed the window"
+        );
+    }
 }

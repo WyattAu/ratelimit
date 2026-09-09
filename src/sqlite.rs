@@ -189,6 +189,71 @@ mod tests {
         assert_eq!(r.remaining, 3);
     }
 
+    #[tokio::test]
+    async fn reset_at_is_in_the_future_when_allowed() {
+        let backend = test_backend();
+        let r = backend.check("reset-ok", &Quota::per_second(2)).await;
+        assert!(r.allowed);
+        assert!(
+            r.reset_at > Instant::now(),
+            "reset_at must be in the future for an allowed request"
+        );
+    }
+
+    #[tokio::test]
+    async fn denial_timing_is_inside_the_current_interval() {
+        let backend = test_backend();
+        let quota = Quota::per_second(2); // 500 ms interval, burst 2
+
+        assert!(backend.check("denied", &quota).await.allowed);
+        assert!(backend.check("denied", &quota).await.allowed);
+
+        // Partial-window gap: some, but not all, of the interval elapses
+        // before the next request, so it is denied with a fraction of the
+        // interval left to wait.
+        tokio::time::sleep(Duration::from_millis(250)).await;
+
+        let before = Instant::now();
+        let r3 = backend.check("denied", &quota).await;
+        assert!(!r3.allowed);
+        let after = Instant::now();
+        assert!(
+            r3.reset_at > after,
+            "reset_at must be strictly in the future for a denied request"
+        );
+        assert!(
+            r3.reset_at < before + quota.interval(),
+            "reset_at must fall within the current interval, not a full one out"
+        );
+        let retry = r3.retry_after.expect("denied result carries retry_after");
+        assert!(retry > Duration::ZERO);
+        assert!(
+            retry < quota.interval(),
+            "retry_after must reflect the elapsed fraction of the interval"
+        );
+    }
+
+    #[tokio::test]
+    async fn tokens_replenish_after_elapsed_intervals() {
+        let backend = test_backend();
+        let quota = Quota::per_second(10); // 100 ms interval, burst 10
+
+        // Rapid requests exhaust the burst to exactly zero.
+        for i in 1..=10u64 {
+            let r = backend.check("replenish", &quota).await;
+            assert!(r.allowed);
+            assert_eq!(r.remaining, 10 - i);
+        }
+        assert!(!backend.check("replenish", &quota).await.allowed);
+
+        // After one full interval the token bucket must refill: a backend
+        // that ignores elapsed time stays denied.
+        tokio::time::sleep(Duration::from_millis(110)).await;
+        let r = backend.check("replenish", &quota).await;
+        assert!(r.allowed, "token must replenish after one interval");
+        assert!(r.remaining <= 2, "at most one interval of tokens visible");
+    }
+
     #[test]
     fn file_backend_creates_db() {
         let dir = std::env::temp_dir().join("throttle-kit-test-sqlite");

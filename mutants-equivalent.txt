@@ -1,0 +1,48 @@
+# cargo-mutants baseline notes — ratelimit (throttle-kit), 2026-09-09
+# Full run: 185 tested, 46 missed, 94 caught, 45 unviable.
+# After adding killing tests: 20 of the 46 misses are killed
+# (new score 114/185 = 61.6%, up from 50.8%);
+# the remaining 26 are triaged below (4 equivalent, 22 unviable).
+
+## EQUIVALENT
+
+- src/backend.rs:73:55 replace `-` with `+` in gcra_decide
+  `(new_tat - now) - emission * burst` becomes
+  `new_tat - (now + emission * burst)`: algebraically identical
+  (associativity of subtraction over the sum). No observable difference.
+
+- src/sqlite.rs:81:44 replace `>` with `>=` in SqliteBackend::check
+  At `replenished == 0` the taken branch computes
+  `(remaining + 0).min(burst)` == `remaining` (remaining <= burst invariant),
+  which is exactly the untaken `else` branch. Identical behavior.
+
+- src/sliding_window.rs:57:75 replace `+` with `-` in
+  `unwrap_or(now + window)` (SlidingWindowBackend::check)
+  The fallback arm is reachable only when the entry deque is empty AND the
+  request was denied. Denial with an empty deque requires `limit == 0`
+  (count 0 < limit fails only for limit 0), which forces
+  `window = interval * burst == 0`; `now + 0` == `now - 0`. Unreachable
+  divergence.
+
+- src/sliding_window.rs:44:50 replace `<` with `<=` in the window-eviction
+  `while` (SlidingWindowBackend::check)
+  Divergence requires a recorded timestamp exactly equal to `window_start`
+  (nanosecond `Instant` equality). Practically untestable; eviction of the
+  boundary element is semantically negligible (it is the oldest expired
+  entry; the count changes by at most one only at that exact instant).
+
+## UNVIABLE (in this environment)
+
+- src/redis.rs (18 missed mutants: 55:9 body stubs, 71:57, 89:31,
+  96:50, 97:36, 99:36, 120:46, 130:46)
+  All lie on the live-Redis execution paths (`gcra_check` script invocation
+  and `RateLimitBackend::check`). No Redis service locally or in CI; this is
+  the documented structural exception in COVERAGE-NOTES.md ("Redis GCRA
+  execution paths"). Lifting it requires a Redis service container in CI and
+  a REDIS_URL-gated integration test, per the standard pattern.
+
+- src/backend.rs:154:35, 154:54 (4 mutants, metrics block)
+  Inside `#[cfg(feature = "metrics")]`: mutants alter only the recorded
+  `ratelimit_utilization` histogram value. No metrics recorder is installed
+  in tests, so the value has no observable effect; pinning it would require
+  a test-side recorder mock with no behavioral payoff.
