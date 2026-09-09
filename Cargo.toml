@@ -9,7 +9,7 @@ readme = "README.md"
 repository = "https://github.com/WyattAu/ratelimit"
 keywords = ["rate-limit", "gcra", "throttle"]
 categories = ["web-programming"]
-exclude = ["/target", "/fuzz"]
+exclude = ["/target", "/target", "/fuzz"]
 
 [dependencies]
 tokio = { version = "1", features = ["time", "sync", "rt"] }
