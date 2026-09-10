@@ -313,11 +313,13 @@ mod tests {
         assert_eq!(r.retry_after, Some(Duration::from_millis(100)));
     }
 
+    #[cfg(feature = "in-memory")]
     #[test]
     fn in_memory_backend_new() {
         let _ = InMemoryBackend::new();
     }
 
+    #[cfg(feature = "in-memory")]
     #[test]
     fn in_memory_backend_default() {
         let _ = InMemoryBackend::default();
@@ -335,6 +337,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "in-memory")]
     #[tokio::test]
     async fn first_request_is_allowed() {
         let backend = InMemoryBackend::new();
@@ -351,6 +354,7 @@ mod tests {
         assert!(result.retry_after.is_none());
     }
 
+    #[cfg(feature = "in-memory")]
     #[tokio::test]
     async fn rate_limit_exhaustion() {
         let backend = InMemoryBackend::new();
@@ -364,6 +368,7 @@ mod tests {
         assert!(r3.retry_after.is_some());
     }
 
+    #[cfg(feature = "in-memory")]
     #[tokio::test]
     async fn keyed_limiter_default_quota() {
         use crate::KeyedRateLimiter;
@@ -375,6 +380,7 @@ mod tests {
         assert_eq!(r.limit, 5);
     }
 
+    #[cfg(feature = "in-memory")]
     #[tokio::test]
     async fn keyed_limiter_custom_quota_per_key() {
         use crate::KeyedRateLimiter;
@@ -393,6 +399,7 @@ mod tests {
         assert_eq!(r_api.limit, 100);
     }
 
+    #[cfg(feature = "in-memory")]
     #[tokio::test]
     async fn keyed_limiter_isolation() {
         use crate::KeyedRateLimiter;
@@ -410,6 +417,7 @@ mod tests {
         assert!(r2.allowed);
     }
 
+    #[cfg(feature = "in-memory")]
     #[test]
     fn keyed_limiter_sync_check() {
         use crate::KeyedRateLimiter;
@@ -421,6 +429,7 @@ mod tests {
         assert_eq!(r.limit, 10);
     }
 
+    #[cfg(feature = "in-memory")]
     #[tokio::test]
     async fn keyed_limiter_headers() {
         use crate::KeyedRateLimiter;
@@ -437,6 +446,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "in-memory")]
     #[test]
     fn sync_check_basic() {
         let backend = InMemoryBackend::new();

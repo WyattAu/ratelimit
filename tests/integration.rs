@@ -14,7 +14,10 @@
 
 use std::time::Duration;
 
-use throttle_kit::{InMemoryBackend, Quota, RateLimitError, RateLimiter};
+use throttle_kit::{Quota, RateLimitError};
+
+#[cfg(feature = "in-memory")]
+use throttle_kit::{InMemoryBackend, RateLimiter};
 
 // ---------------------------------------------------------------------------
 // Quota creation
@@ -110,6 +113,7 @@ fn result_headers_contain_correct_keys() {
 // InMemoryBackend check / allow / deny
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "in-memory")]
 #[tokio::test]
 async fn backend_allows_first_request() {
     let backend = InMemoryBackend::new();
@@ -124,6 +128,7 @@ async fn backend_allows_first_request() {
     assert_eq!(result.limit, 5);
 }
 
+#[cfg(feature = "in-memory")]
 #[tokio::test]
 async fn backend_exhausts_quota() {
     let backend = InMemoryBackend::new();
@@ -144,6 +149,7 @@ async fn backend_exhausts_quota() {
     assert_eq!(r4.remaining, 0);
 }
 
+#[cfg(feature = "in-memory")]
 #[tokio::test]
 async fn backend_keys_are_isolated() {
     let backend = InMemoryBackend::new();
@@ -161,12 +167,14 @@ async fn backend_keys_are_isolated() {
     assert!(r_b.allowed);
 }
 
+#[cfg(feature = "in-memory")]
 #[test]
 fn backend_new_and_default() {
     let _ = InMemoryBackend::new();
     let _ = InMemoryBackend::default();
 }
 
+#[cfg(feature = "in-memory")]
 #[test]
 fn sync_check_works() {
     let backend = InMemoryBackend::new();
@@ -178,6 +186,7 @@ fn sync_check_works() {
     assert_eq!(r.remaining, 1);
 }
 
+#[cfg(feature = "in-memory")]
 #[test]
 fn sync_check_exhaustion() {
     let backend = InMemoryBackend::new();
@@ -189,6 +198,7 @@ fn sync_check_exhaustion() {
     assert!(!r.allowed);
 }
 
+#[cfg(feature = "in-memory")]
 #[tokio::test]
 async fn rate_limiter_is_cloneable() {
     let backend = InMemoryBackend::new();
@@ -199,6 +209,7 @@ async fn rate_limiter_is_cloneable() {
     assert!(r.allowed);
 }
 
+#[cfg(feature = "in-memory")]
 #[tokio::test]
 async fn per_minute_quota_works() {
     let backend = InMemoryBackend::new();
