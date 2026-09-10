@@ -4,9 +4,21 @@ Rate limiting for Rust — **GCRA** (Generic Cell Rate Algorithm) with pluggable
 backends (in-memory, Redis) and optional
 [Tower](https://docs.rs/tower) layer integration.
 
+[![docs.rs](https://docs.rs/throttle-kit/badge.svg)](https://docs.rs/throttle-kit)
 [![CI](https://github.com/WyattAu/ratelimit/actions/workflows/ci.yml/badge.svg)](https://github.com/WyattAu/ratelimit/actions)
-[![crates.io](https://img.shields.io/crates/v/ratelimit)](https://crates.io/crates/ratelimit)
-[![license](https://img.shields.io/crates/l/ratelimit)](LICENSE-MIT)
+[![crates.io](https://img.shields.io/crates/v/throttle-kit)](https://crates.io/crates/throttle-kit)
+[![license](https://img.shields.io/crates/l/throttle-kit)](LICENSE-MIT)
+
+## Feature Flags
+
+| Feature | Default | Description |
+|---|---|---|
+| `in-memory` | ✅ | `InMemoryBackend` — GCRA state in a `DashMap`, one `Instant` per key. |
+| `sliding-window` | — | `SlidingWindowBackend` — alternative sliding-window counting backend. |
+| `redis` | — | `RedisBackend` for distributed, multi-instance rate limiting. |
+| `sqlite` | — | `SqliteBackend` for durable local limits. |
+| `tower` | — | `RateLimitLayer` with `X-RateLimit-*` headers and `client_ip` identity resolution. |
+| `metrics` | — | Record per-check results via the [`metrics`](https://docs.rs/metrics) facade. |
 
 ## Features
 
@@ -139,5 +151,14 @@ Threat model: [THREAT-MODEL.md](THREAT-MODEL.md).
 ## Performance
 
 Measured hot-path SLOs and allocation profile: [PERF-SLO.md](PERF-SLO.md). Benchmarks run in CI (non-gating regression visibility against the saved `ci` baseline).
+
+| Hot path (criterion mean, 2026-09, 6-core x86_64) | P50 | SLO |
+|---|---|---|
+| `check` warm key (in-memory GCRA) | **137.5 ns** | < 200 ns |
+| `check` fresh key | ~200 ns | < 250 ns amortized |
+| `resolve_client_identity` proxied (trusted XFF walk) | 134.6 ns | < 150 ns |
+| `resolve_client_identity` direct (secure default) | 8.3 ns | < 20 ns |
+
+Typical end-to-end Tower layer cost behind a trusted proxy ≈ **272 ns/request** (check + identity resolution) plus one `String` allocation for the key.
 
 Head-to-head numbers against governor (the leading GCRA crate), with an honest feature comparison: [COMPARISON.md](COMPARISON.md).

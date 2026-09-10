@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(docsrs, allow(unused_attributes))]
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 //! Rate limiting for Rust.
@@ -49,20 +51,24 @@ mod sqlite;
 mod sliding_window;
 
 #[cfg(feature = "tower")]
+#[cfg_attr(docsrs, doc(cfg(feature = "tower")))]
 pub mod client_ip;
 
 #[cfg(feature = "tower")]
 mod tower_layer;
 
 #[cfg(feature = "tower")]
+#[cfg_attr(docsrs, doc(cfg(feature = "tower")))]
 pub use client_ip::{
     ClientIpConfig, ClientIpError, ClientIpSource, IpNet, MissingClientIdentity,
     MissingClientPolicy, ResolvedClient,
 };
 #[cfg(feature = "tower")]
+#[cfg_attr(docsrs, doc(cfg(feature = "tower")))]
 pub use tower_layer::{KeyExtractor, RateLimitLayer, RateLimitService};
 
 #[cfg(feature = "in-memory")]
+#[cfg_attr(docsrs, doc(cfg(feature = "in-memory")))]
 pub use backend::InMemoryBackend;
 pub use backend::{RateLimitBackend, gcra_decide};
 
@@ -70,12 +76,15 @@ pub use error::RateLimitError;
 pub use metrics::RateLimitResult;
 pub use quota::Quota;
 #[cfg(feature = "sliding-window")]
+#[cfg_attr(docsrs, doc(cfg(feature = "sliding-window")))]
 pub use sliding_window::SlidingWindowBackend;
 
 #[cfg(feature = "redis")]
+#[cfg_attr(docsrs, doc(cfg(feature = "redis")))]
 pub use redis::RedisBackend;
 
 #[cfg(feature = "sqlite")]
+#[cfg_attr(docsrs, doc(cfg(feature = "sqlite")))]
 pub use sqlite::SqliteBackend;
 
 use std::sync::Arc;
