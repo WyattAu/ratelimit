@@ -44,6 +44,13 @@ criteria = "safe-to-run"
 version = "1.9.2"
 criteria = "safe-to-deploy"
 
+# Still in the lockfile transitively via the `redis` crate (unconditional
+# dev-dependency), even though throttle-kit no longer depends on it
+# directly as of 1.1.0.
+[[exemptions.async-trait]]
+version = "0.1.92"
+criteria = "safe-to-deploy"
+
 [[exemptions.autocfg]]
 version = "1.5.1"
 criteria = "safe-to-run"
