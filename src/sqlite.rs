@@ -43,7 +43,6 @@ impl SqliteBackend {
     }
 }
 
-#[async_trait::async_trait]
 impl RateLimitBackend for SqliteBackend {
     async fn check(&self, key: &str, quota: &Quota) -> RateLimitResult {
         // A poisoned mutex only means a peer panicked mid-check; the

@@ -3,14 +3,26 @@ use std::sync::OnceLock;
 #[cfg(feature = "in-memory")]
 use std::time::{Duration, Instant};
 
+use std::future::Future;
+
 use crate::metrics::RateLimitResult;
 use crate::quota::Quota;
 
 /// Backend trait for rate limit state storage.
-#[async_trait::async_trait]
+///
+/// Uses native `async fn` in trait (MSRV 1.85) instead of
+/// `#[async_trait]`, so a check dispatches no future boxing and no
+/// vtable call. The returned future is required to be `Send` so
+/// backends work on multi-threaded runtimes (the Tower layer's boxed
+/// future, spawned tasks).
+///
+/// The trait is intentionally **not dyn-compatible**: every consumer in
+/// this crate is generic over `B: RateLimitBackend`, keeping the hot
+/// path statically dispatched. If you need heterogeneous backend sets,
+/// wrap them in your own enum rather than a `dyn` trait object.
 pub trait RateLimitBackend: Send + Sync + 'static {
     /// Check if a request for `key` is allowed under the given `quota`.
-    async fn check(&self, key: &str, quota: &Quota) -> RateLimitResult;
+    fn check(&self, key: &str, quota: &Quota) -> impl Future<Output = RateLimitResult> + Send;
 }
 
 /// Pure GCRA (Generic Cell Rate Algorithm) conformance decision.
@@ -95,14 +107,47 @@ struct Entry {
     tac_ms: u64,
 }
 
+/// One GCRA step for a stored entry: decide via the verified pure core
+/// [`gcra_decide`], then — exactly as it computed — advance the TAC to
+/// `new_tat = max(tac, now) + emission` when the request conforms.
+///
+/// Shared by the warm-key (`get_mut`) and cold-key (`entry`) paths so
+/// the two cannot drift.
+#[cfg(feature = "in-memory")]
+fn gcra_advance(entry: &mut Entry, now_ms: u64, interval_ms: u64, burst: u64) -> (bool, u64, u64) {
+    // Verified GCRA decision core (see tests/kani.rs).
+    let (allowed, retry_after_ms, remaining) =
+        gcra_decide(now_ms, entry.tac_ms, interval_ms, burst);
+    if allowed {
+        entry.tac_ms = entry.tac_ms.max(now_ms).saturating_add(interval_ms);
+    }
+    (allowed, retry_after_ms, remaining)
+}
+
 /// Monotonic milliseconds since process start (the GCRA clock domain).
 ///
 /// Anchored once so that clock adjustments never move the TAC timeline.
 #[cfg(feature = "in-memory")]
-fn monotonic_ms() -> u64 {
+fn monotonic_anchor() -> Instant {
     static ANCHOR: OnceLock<Instant> = OnceLock::new();
-    let anchor = ANCHOR.get_or_init(Instant::now);
-    anchor.elapsed().as_millis() as u64
+    *ANCHOR.get_or_init(Instant::now)
+}
+
+/// Monotonic milliseconds since process start (the GCRA clock domain).
+#[cfg(feature = "in-memory")]
+fn monotonic_ms() -> u64 {
+    monotonic_anchor().elapsed().as_millis() as u64
+}
+
+/// A deadline `from_now_ms` after the shared monotonic anchor.
+///
+/// Same clock domain as [`monotonic_ms`], so `reset_at` is derived from
+/// the single clock read of a check instead of a fresh `Instant::now()`.
+#[cfg(feature = "in-memory")]
+fn monotonic_deadline(from_now_ms: u64) -> Instant {
+    monotonic_anchor()
+        .checked_add(Duration::from_millis(from_now_ms))
+        .unwrap_or_else(Instant::now)
 }
 
 #[cfg(feature = "in-memory")]
@@ -123,29 +168,29 @@ impl Default for InMemoryBackend {
 }
 
 #[cfg(feature = "in-memory")]
-#[async_trait::async_trait]
 impl RateLimitBackend for InMemoryBackend {
     async fn check(&self, key: &str, quota: &Quota) -> RateLimitResult {
         let interval_ms = quota.interval().as_millis().max(1) as u64;
         let burst = u64::from(quota.burst);
         let now_ms = monotonic_ms();
 
-        let mut entry = self
-            .entries
-            .entry(key.to_string())
-            .or_insert_with(|| Entry { tac_ms: now_ms });
-
-        // Verified GCRA decision core (see tests/kani.rs).
+        // Warm-key fast path (steady-state traffic): update the existing
+        // entry in place — zero allocation. Only a key's first-ever call
+        // pays for the `to_owned()` insert on the cold path below.
         let (allowed, retry_after_ms, remaining) =
-            gcra_decide(now_ms, entry.tac_ms, interval_ms, burst);
+            if let Some(mut entry) = self.entries.get_mut(key) {
+                gcra_advance(&mut entry, now_ms, interval_ms, burst)
+            } else {
+                let mut entry = self
+                    .entries
+                    .entry(key.to_owned())
+                    .or_insert_with(|| Entry { tac_ms: now_ms });
+                gcra_advance(&mut entry, now_ms, interval_ms, burst)
+            };
 
-        if allowed {
-            // Advance the TAC exactly as `gcra_decide` computed it:
-            // new_tat = max(tac, now) + emission.
-            entry.tac_ms = entry.tac_ms.max(now_ms).saturating_add(interval_ms);
-        }
-
-        let reset_at = Instant::now() + quota.interval();
+        // Derived from the same clock read as the GCRA decision above —
+        // a check performs exactly one clock read.
+        let reset_at = monotonic_deadline(now_ms.saturating_add(interval_ms));
 
         #[cfg(feature = "metrics")]
         {
@@ -172,6 +217,44 @@ impl RateLimitBackend for InMemoryBackend {
                 Some(Duration::from_millis(retry_after_ms))
             },
         }
+    }
+}
+
+/// No-op backend: allows every request with the quota's full budget.
+///
+/// Intended for tests, as a feature-flag "kill switch" that never
+/// throttles, or as a placeholder while wiring a real backend. Not for
+/// production limiting — it enforces nothing.
+///
+/// # Examples
+///
+/// ```
+/// use throttle_kit::{NoopBackend, Quota, RateLimiter};
+///
+/// # async fn run() {
+/// let limiter = RateLimiter::new(Quota::per_second(10), NoopBackend);
+///
+/// // Never throttles: every check is allowed with a full budget.
+/// assert!(limiter.check("anything").await.allowed);
+/// assert!(limiter.check("anything").await.allowed);
+/// # }
+/// # run();
+/// ```
+#[cfg(feature = "test-util")]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-util")))]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoopBackend;
+
+#[cfg(feature = "test-util")]
+impl RateLimitBackend for NoopBackend {
+    fn check(&self, _key: &str, quota: &Quota) -> impl Future<Output = RateLimitResult> + Send {
+        std::future::ready(RateLimitResult {
+            allowed: true,
+            remaining: u64::from(quota.burst).saturating_sub(1),
+            reset_at: std::time::Instant::now() + quota.interval(),
+            limit: u64::from(quota.burst),
+            retry_after: None,
+        })
     }
 }
 
@@ -283,6 +366,59 @@ mod tests {
         assert!(
             r.reset_at > std::time::Instant::now(),
             "reset_at must be in the future for an allowed request"
+        );
+    }
+
+    #[cfg(feature = "in-memory")]
+    #[tokio::test]
+    async fn warm_key_fast_path_matches_cold_path_semantics() {
+        // The borrowed-key fast path (`get_mut`) must behave exactly like
+        // the cold path it replaced: burst exhaustion and TAC advance are
+        // identical across the boundary, and no duplicate map entries are
+        // created for repeated checks.
+        let backend = InMemoryBackend::new();
+        let quota = Quota::per_second(10); // 100 ms interval, burst 10
+
+        // Call 1 takes the cold path (entry insert); calls 2..=10 take
+        // the warm path. Remaining increments across the boundary exactly
+        // as it did when every call went through `entry()`.
+        for i in 1..=10u64 {
+            let r = backend.check("hot", &quota).await;
+            assert!(r.allowed, "call {i} must conform");
+            assert_eq!(r.remaining, i);
+        }
+        // Burst is exhausted through the warm path.
+        let denied = backend.check("hot", &quota).await;
+        assert!(!denied.allowed);
+        assert!(denied.retry_after.is_some());
+
+        // Exactly one entry for the key — the fast path must not insert.
+        assert_eq!(backend.entries.len(), 1);
+        assert!(backend.entries.contains_key("hot"));
+    }
+
+    #[cfg(feature = "in-memory")]
+    #[tokio::test]
+    async fn warm_key_reset_at_derived_from_single_clock_read() {
+        // reset_at is anchored to the check's own monotonic clock read:
+        // read_time + interval, with read_time inside the call's wall
+        // window. One clock read per check — no fresh Instant for the
+        // deadline.
+        let backend = InMemoryBackend::new();
+        let quota = Quota::per_second(10); // 100 ms interval
+        let before = std::time::Instant::now();
+        let r = backend.check("clock-domain", &quota).await;
+        let after = std::time::Instant::now();
+        assert!(r.allowed);
+        // The monotonic read is truncated to whole milliseconds, so the
+        // deadline can sit up to 1 ms earlier than the untruncated read.
+        assert!(
+            r.reset_at + Duration::from_millis(1) >= before + quota.interval(),
+            "reset_at = clock_read + interval, read no earlier than `before`"
+        );
+        assert!(
+            r.reset_at <= after + quota.interval(),
+            "reset_at = clock_read + interval, read no later than `after`"
         );
     }
 }

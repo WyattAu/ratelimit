@@ -33,11 +33,15 @@
 //! stays apples-to-apples. Rebuilding the limiter per iteration would measure
 //! allocator noise instead of the decision path.
 
+#[cfg(feature = "in-memory")]
 use criterion::{Criterion, criterion_group, criterion_main};
+#[cfg(feature = "in-memory")]
 use throttle_kit::{InMemoryBackend, Quota, RateLimiter};
 
+#[cfg(feature = "in-memory")]
 const KEY: &str = "bench-key";
 
+#[cfg(feature = "in-memory")]
 fn bench_throttle_kit_check_sync(c: &mut Criterion) {
     let mut group = c.benchmark_group("comparison");
     group.bench_function("throttle_kit_check_sync", |b| {
@@ -50,6 +54,7 @@ fn bench_throttle_kit_check_sync(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(feature = "in-memory")]
 fn bench_throttle_kit_check_async(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("comparison");
@@ -69,6 +74,7 @@ fn bench_throttle_kit_check_async(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(feature = "in-memory")]
 fn bench_governor_check(c: &mut Criterion) {
     use std::num::NonZeroU32;
 
@@ -87,10 +93,17 @@ fn bench_governor_check(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(feature = "in-memory")]
 criterion_group!(
     comparison,
     bench_throttle_kit_check_sync,
     bench_throttle_kit_check_async,
     bench_governor_check,
 );
+#[cfg(feature = "in-memory")]
 criterion_main!(comparison);
+
+// Bench targets are `harness = false`, so a `main` must exist even when
+// the in-memory feature (and with it every benchmark) is compiled out.
+#[cfg(not(feature = "in-memory"))]
+fn main() {}

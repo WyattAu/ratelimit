@@ -13,12 +13,13 @@ backends (in-memory, Redis) and optional
 
 | Feature | Default | Description |
 |---|---|---|
-| `in-memory` | ✅ | `InMemoryBackend` — GCRA state in a `DashMap`, one `Instant` per key. |
+| `in-memory` | ✅ | `InMemoryBackend` — GCRA state in a `DashMap`, one `u64` TAC per key. |
 | `sliding-window` | — | `SlidingWindowBackend` — alternative sliding-window counting backend. |
 | `redis` | — | `RedisBackend` for distributed, multi-instance rate limiting. |
 | `sqlite` | — | `SqliteBackend` for durable local limits. |
 | `tower` | — | `RateLimitLayer` with `X-RateLimit-*` headers and `client_ip` identity resolution. |
 | `metrics` | — | Record per-check results via the [`metrics`](https://docs.rs/metrics) facade. |
+| `test-util` | — | `NoopBackend` — always-allow backend for tests and kill switches. |
 
 ## Features
 
@@ -150,15 +151,18 @@ Threat model: [THREAT-MODEL.md](THREAT-MODEL.md).
 
 ## Performance
 
-Measured hot-path SLOs and allocation profile: [PERF-SLO.md](PERF-SLO.md). Benchmarks run in CI (non-gating regression visibility against the saved `ci` baseline).
+Measured hot-path SLOs and allocation profile: [PERF-SLO.md](PERF-SLO.md). Benchmarks run in CI (non-gating regression visibility against the saved `ci` baseline); the zero-allocation warm path is enforced by a counting-allocator test on every `cargo test`.
 
-| Hot path (criterion mean, 2026-09, 6-core x86_64) | P50 | SLO |
+| Hot path (in-memory GCRA, warm key) | 1.0.0 | 1.1.0 |
 |---|---|---|
-| `check` warm key (in-memory GCRA) | **137.5 ns** | < 200 ns |
-| `check` fresh key | ~200 ns | < 250 ns amortized |
-| `resolve_client_identity` proxied (trusted XFF walk) | 134.6 ns | < 150 ns |
-| `resolve_client_identity` direct (secure default) | 8.3 ns | < 20 ns |
+| Heap allocations per check | 2 (key `String` + async-trait future box) | **0** (counting-allocator verified) |
+| Instructions per check (`perf stat`, min of 5) | ~1010 | **~662 (−34.5%)** |
+| Clock reads per check | 2 | **1** |
 
-Typical end-to-end Tower layer cost behind a trusted proxy ≈ **272 ns/request** (check + identity resolution) plus one `String` allocation for the key.
+SLOs (idle hardware): `check` warm key < 200 ns P50, fresh key < 250 ns
+amortized, `resolve_client_identity` < 150 ns proxied / < 20 ns direct.
+The 2026-09-11 re-measurement ran on a saturated shared box (see the
+caveat in PERF-SLO.md); instruction counts and allocation behavior are
+the authoritative before/after evidence.
 
 Head-to-head numbers against governor (the leading GCRA crate), with an honest feature comparison: [COMPARISON.md](COMPARISON.md).

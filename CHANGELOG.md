@@ -5,6 +5,55 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-11
+
+### Changed
+
+- **Performance: zero-allocation warm-key check path.** The in-memory
+  GCRA backend previously allocated on *every* check — the key was
+  stringified for the DashMap lookup and `#[async_trait]` boxed a future
+  per call — despite PERF-SLO.md claiming a zero-alloc steady state. The
+  claim was false; 1.0.0 measured **2 heap allocations per warm check**.
+  Now: borrowed-key fast path (`get_mut` on `&str`, cold-path insert only
+  on a key's first-ever check) and native async-fn-in-trait (MSRV 1.85)
+  replace `#[async_trait]`, removing the dependency. Verified: **0
+  allocations per warm check** and **−34.5% instructions per check**
+  (~1010 → ~662, `perf stat` A/B, min of 5), enforced by a new counting
+  allocator test (`tests/zero_alloc_hot_path.rs`).
+- **Performance: single clock read per check.** `reset_at` is now derived
+  from the same monotonic anchor read as the GCRA decision instead of a
+  second fresh `Instant::now()`.
+- **Performance: `KeyedRateLimiter::check` no longer allocates or clones
+  on the hot path.** 1.0.0 stringified the key twice, cloned a
+  `RateLimiter` (Arc + quota) and held a DashMap guard per call; it now
+  reads per-key quota overrides by borrowed key and delegates straight
+  to the shared backend. Default-quota keys are never materialized in
+  the override map. The `B: Clone` bound was dropped.
+- **Performance: Tower layer trims.** Client-IP keys are formatted into
+  a 45-byte stack buffer instead of a per-request `String`; the three
+  `X-RateLimit-*` header values are built from stack-formatted digits
+  via `HeaderValue::from_bytes` instead of `to_string().parse()`
+  round-trips; the per-request key-source clone is now an `Arc` bump
+  (1.0.0 copied the trusted-proxy CIDR list on every request). The
+  service future is still boxed — unboxing it is future work.
+- `Quota` now implements `Copy` (was `Clone` only).
+- `RateLimiter<B>` no longer requires `B: Clone` to be `Clone`.
+
+### Fixed
+
+- **PERF-SLO.md honesty correction:** the "zero-alloc steady state" claim
+  (PERF-SLO.md and `benches/iai_hot_path.rs` comments) did not match
+  measured reality in 1.0.0. The allocation profile is now verified by a
+  counting-allocator test and the docs state what is measured, projected,
+  or future work — including the still-boxed Tower service future and
+  the allocating `metrics`-feature labels.
+
+### Added
+
+- `NoopBackend` behind the new `test-util` feature: an always-allow
+  backend for tests and feature-flag kill switches (previously only a
+  test-local helper).
+
 ## [1.0.0] - 2026-09-05
 
 ### Added

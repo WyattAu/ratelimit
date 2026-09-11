@@ -1,9 +1,11 @@
+use std::fmt;
 use std::future::Future;
+use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use http::{Extensions, HeaderMap, StatusCode};
+use http::{Extensions, HeaderMap, HeaderValue, StatusCode};
 use tower::Service;
 use tower_layer::Layer;
 
@@ -11,6 +13,69 @@ use crate::RateLimiter;
 use crate::backend::RateLimitBackend;
 use crate::client_ip::{ClientIpConfig, MissingClientIdentity, MissingClientPolicy};
 use crate::quota::Quota;
+
+use std::fmt::Write as _;
+
+/// Fixed-capacity scratch writer over a byte buffer.
+///
+/// `write!` targets here never allocate: the capacity checks use
+/// `get_mut`/`get` (no panics, no `unsafe`), and overflow returns a
+/// formatting error, which callers treat as "keep the empty value" —
+/// unreachable for the inputs used (IP text and decimal integers).
+struct SliceWriter<'a> {
+    buf: &'a mut [u8],
+    len: usize,
+}
+
+impl fmt::Write for SliceWriter<'_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let end = self.len + s.len();
+        let slot = self.buf.get_mut(self.len..end).ok_or(fmt::Error)?;
+        slot.copy_from_slice(s.as_bytes());
+        self.len = end;
+        Ok(())
+    }
+}
+
+/// Stack storage for an IP-address rate-limit key: the longest IPv6 text
+/// form is 45 bytes, so keying by client IP needs no heap `String`.
+struct KeyBuf([u8; 45]);
+
+impl KeyBuf {
+    /// Format `ip` into the buffer; the returned `&str` borrows `self`.
+    fn format_ip(&mut self, ip: IpAddr) -> &str {
+        let mut writer = SliceWriter {
+            buf: &mut self.0,
+            len: 0,
+        };
+        // `Display for IpAddr` emits pure ASCII bounded by 45 bytes, so
+        // the write cannot overflow this buffer.
+        let _ = write!(writer, "{ip}");
+        let len = writer.len;
+        // Unreachable fallbacks: `len <= 45` and the contents are ASCII.
+        let bytes = self.0.get(..len).unwrap_or(&[]);
+        // `str::from_utf8` is stable since Rust 1.0; clippy 1.94's
+        // `incompatible_msrv` misfires on it when the package MSRV is
+        // 1.85, so it is suppressed here rather than project-wide.
+        #[allow(clippy::incompatible_msrv)]
+        str::from_utf8(bytes).unwrap_or_default()
+    }
+}
+
+/// Decimal ASCII form of a `u64` in stack space (max 20 digits), for
+/// building `HeaderValue`s without `to_string()` allocations.
+fn u64_header_value(v: u64) -> Option<HeaderValue> {
+    let mut buf = [0u8; 20];
+    let len = {
+        let mut writer = SliceWriter {
+            buf: &mut buf,
+            len: 0,
+        };
+        let _ = write!(writer, "{v}");
+        writer.len
+    };
+    HeaderValue::from_bytes(buf.get(..len)?).ok()
+}
 
 /// Custom, non-IP key extractor for callers that key requests by
 /// something other than client IP (API key, tenant id, …). Receives the
@@ -47,7 +112,10 @@ enum KeySource {
 #[derive(Clone)]
 pub struct RateLimitLayer<B: RateLimitBackend> {
     limiter: RateLimiter<B>,
-    key_source: KeySource,
+    // `Arc` so the per-request clone (into the service future) is a
+    // refcount bump — `ClientIpConfig`'s trusted-proxy list would
+    // otherwise be copied on every request.
+    key_source: Arc<KeySource>,
 }
 
 impl<B: RateLimitBackend> RateLimitLayer<B> {
@@ -59,10 +127,10 @@ impl<B: RateLimitBackend> RateLimitLayer<B> {
     pub fn new(quota: Quota, backend: B) -> Self {
         Self {
             limiter: RateLimiter::new(quota, backend),
-            key_source: KeySource::ClientIp {
+            key_source: Arc::new(KeySource::ClientIp {
                 config: ClientIpConfig::default(),
                 missing_policy: MissingClientPolicy::default(),
-            },
+            }),
         }
     }
 
@@ -70,14 +138,14 @@ impl<B: RateLimitBackend> RateLimitLayer<B> {
     /// override) only for the given proxy networks, using the
     /// right-to-left hop walk described there. REQ-THROTTLE-100/101.
     pub fn with_client_ip(mut self, config: ClientIpConfig) -> Self {
-        let missing_policy = match &self.key_source {
+        let missing_policy = match self.key_source.as_ref() {
             KeySource::ClientIp { missing_policy, .. } => missing_policy.clone(),
             KeySource::Custom(_) => MissingClientPolicy::default(),
         };
-        self.key_source = KeySource::ClientIp {
+        self.key_source = Arc::new(KeySource::ClientIp {
             config,
             missing_policy,
-        };
+        });
         self
     }
 
@@ -86,16 +154,24 @@ impl<B: RateLimitBackend> RateLimitLayer<B> {
     ///
     /// Only meaningful for client-IP identity.
     pub fn with_missing_client_policy(mut self, policy: MissingClientPolicy) -> Self {
-        if let KeySource::ClientIp { missing_policy, .. } = &mut self.key_source {
+        // Clone the inner source if the `Arc` is shared (the layer was
+        // cloned after construction) so builder mutation never leaks
+        // into the sibling layer.
+        let mut source = match Arc::try_unwrap(self.key_source) {
+            Ok(source) => source,
+            Err(shared) => (*shared).clone(),
+        };
+        if let KeySource::ClientIp { missing_policy, .. } = &mut source {
             *missing_policy = policy;
         }
+        self.key_source = Arc::new(source);
         self
     }
 
     /// Key requests by a custom extractor instead of client IP
     /// (API key, tenant id, …).
     pub fn with_key_extractor(mut self, extractor: KeyExtractor) -> Self {
-        self.key_source = KeySource::Custom(extractor);
+        self.key_source = Arc::new(KeySource::Custom(extractor));
         self
     }
 }
@@ -123,7 +199,7 @@ where
 pub struct RateLimitService<S, B: RateLimitBackend> {
     inner: S,
     limiter: RateLimiter<B>,
-    key_source: KeySource,
+    key_source: Arc<KeySource>,
 }
 
 impl<S, ReqBody, B> Service<http::Request<ReqBody>> for RateLimitService<S, B>
@@ -145,19 +221,29 @@ where
     }
 
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
-        let key_source = self.key_source.clone();
+        let key_source = Arc::clone(&self.key_source);
         let limiter = self.limiter.clone();
         let mut inner = self.inner.clone();
 
         Box::pin(async move {
-            let key = match &key_source {
+            // Key scratch space lives in this future's stack frame: the
+            // client-IP key is formatted into `key_buf` (no heap), and
+            // only a custom extractor (or the opt-in fallback key,
+            // borrowed from the `Arc`'d key source) touches heap storage.
+            let mut key_buf = KeyBuf([0u8; 45]);
+            let custom_key: Option<String> = match key_source.as_ref() {
+                KeySource::Custom(extract) => Some(extract(req.headers(), req.extensions())),
+                _ => None,
+            };
+
+            let key: &str = match key_source.as_ref() {
                 KeySource::ClientIp {
                     config,
                     missing_policy,
                 } => {
                     let peer = crate::client_ip::peer_ip_from_extensions(req.extensions());
                     match crate::client_ip::resolve_client_identity(req.headers(), peer, config) {
-                        Ok(resolved) => resolved.ip.to_string(),
+                        Ok(resolved) => key_buf.format_ip(resolved.ip),
                         Err(MissingClientIdentity) => match missing_policy {
                             // Fail closed: identity unresolvable → 503.
                             // REQ-THROTTLE-103.
@@ -166,14 +252,14 @@ where
                                 *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
                                 return Ok(response);
                             }
-                            MissingClientPolicy::FallbackKey(key) => key.to_string(),
+                            MissingClientPolicy::FallbackKey(key) => key.as_ref(),
                         },
                     }
                 }
-                KeySource::Custom(extract) => extract(req.headers(), req.extensions()),
+                KeySource::Custom(_) => custom_key.as_deref().unwrap_or_default(),
             };
 
-            let result = limiter.check(&key).await;
+            let result = limiter.check(key).await;
 
             if !result.allowed {
                 let mut response = http::Response::new(ReqBody::default());
@@ -194,10 +280,13 @@ where
 }
 
 fn insert_rate_limit_headers(headers: &mut HeaderMap, result: &crate::metrics::RateLimitResult) {
-    if let Ok(val) = result.limit.to_string().parse() {
+    // Values are formatted into a stack buffer and validated once by
+    // `HeaderValue::from_bytes` — no `to_string().parse()` round-trips
+    // (each of those costs two allocations per header).
+    if let Some(val) = u64_header_value(result.limit) {
         headers.insert("X-RateLimit-Limit", val);
     }
-    if let Ok(val) = result.remaining.to_string().parse() {
+    if let Some(val) = u64_header_value(result.remaining) {
         headers.insert("X-RateLimit-Remaining", val);
     }
     let reset_secs = result
@@ -205,7 +294,7 @@ fn insert_rate_limit_headers(headers: &mut HeaderMap, result: &crate::metrics::R
         .checked_duration_since(std::time::Instant::now())
         .unwrap_or_default()
         .as_secs();
-    if let Ok(val) = reset_secs.to_string().parse() {
+    if let Some(val) = u64_header_value(reset_secs) {
         headers.insert("X-RateLimit-Reset", val);
     }
 }
@@ -231,7 +320,6 @@ mod tests {
     #[derive(Clone)]
     struct AlwaysAllowBackend;
 
-    #[async_trait::async_trait]
     impl RateLimitBackend for AlwaysAllowBackend {
         async fn check(&self, _key: &str, quota: &Quota) -> RateLimitResult {
             RateLimitResult {

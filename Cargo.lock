@@ -1635,9 +1635,8 @@ dependencies = [
 
 [[package]]
 name = "throttle-kit"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
- "async-trait",
  "axum",
  "criterion",
  "dashmap",

@@ -69,6 +69,9 @@ fn quota_allow_burst_overrides() {
 fn quota_clone_preserves_values() {
     proptest!(|(n in 1u32..10_000u32)| {
         let q = Quota::per_second(n);
+        // Quota is `Copy` as of 1.1.0; `.clone()` stays valid API, so
+        // clone-by-value semantics are asserted explicitly here.
+        #[allow(clippy::clone_on_copy)]
         let cloned = q.clone();
         prop_assert_eq!(q.burst, cloned.burst);
         prop_assert_eq!(q.interval(), cloned.interval());

@@ -30,7 +30,6 @@ impl Default for SlidingWindowBackend {
     }
 }
 
-#[async_trait::async_trait]
 impl RateLimitBackend for SlidingWindowBackend {
     async fn check(&self, key: &str, quota: &Quota) -> RateLimitResult {
         let window = quota.interval() * quota.burst;

@@ -7,10 +7,14 @@
     clippy::panic
 )]
 
+#[cfg(any(feature = "in-memory", feature = "tower"))]
 use criterion::{Criterion, criterion_group, criterion_main};
+#[cfg(feature = "in-memory")]
 use std::sync::Arc;
+#[cfg(feature = "in-memory")]
 use throttle_kit::{InMemoryBackend, Quota, RateLimiter};
 
+#[cfg(feature = "in-memory")]
 fn bench_check_single_key(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     c.bench_function("rate_limit_check_single_key", |b| {
@@ -28,6 +32,7 @@ fn bench_check_single_key(c: &mut Criterion) {
     });
 }
 
+#[cfg(feature = "in-memory")]
 fn bench_check_1000_keys(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     c.bench_function("rate_limit_check_1000_keys", |b| {
@@ -48,6 +53,7 @@ fn bench_check_1000_keys(c: &mut Criterion) {
     });
 }
 
+#[cfg(feature = "in-memory")]
 fn bench_check_contention(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     c.bench_function("rate_limit_check_4_threads", |b| {
@@ -106,6 +112,7 @@ fn bench_client_ip_resolution(c: &mut Criterion) {
     });
 }
 
+#[cfg(feature = "in-memory")]
 criterion_group!(
     benches,
     bench_check_single_key,
@@ -116,7 +123,14 @@ criterion_group!(
 #[cfg(feature = "tower")]
 criterion_group!(client_ip_benches, bench_client_ip_resolution);
 
-#[cfg(feature = "tower")]
+#[cfg(all(feature = "tower", feature = "in-memory"))]
 criterion_main!(benches, client_ip_benches);
-#[cfg(not(feature = "tower"))]
+#[cfg(all(feature = "tower", not(feature = "in-memory")))]
+criterion_main!(client_ip_benches);
+#[cfg(all(not(feature = "tower"), feature = "in-memory"))]
 criterion_main!(benches);
+
+// Bench targets are `harness = false`, so a `main` must exist even when
+// every benchmark is compiled out.
+#[cfg(not(any(feature = "in-memory", feature = "tower")))]
+fn main() {}

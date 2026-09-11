@@ -72,6 +72,9 @@ pub use tower_layer::{KeyExtractor, RateLimitLayer, RateLimitService};
 #[cfg(feature = "in-memory")]
 #[cfg_attr(docsrs, doc(cfg(feature = "in-memory")))]
 pub use backend::InMemoryBackend;
+#[cfg(feature = "test-util")]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-util")))]
+pub use backend::NoopBackend;
 pub use backend::{RateLimitBackend, gcra_decide};
 
 pub use error::RateLimitError;
@@ -92,10 +95,20 @@ pub use sqlite::SqliteBackend;
 use std::sync::Arc;
 
 /// Core rate limiter that delegates to a [`RateLimitBackend`].
-#[derive(Clone)]
 pub struct RateLimiter<B: RateLimitBackend> {
     quota: Quota,
     backend: Arc<B>,
+}
+
+impl<B: RateLimitBackend> Clone for RateLimiter<B> {
+    fn clone(&self) -> Self {
+        Self {
+            // Quota is `Copy`; the backend is shared behind an `Arc`, so
+            // cloning costs one refcount bump and needs no `B: Clone`.
+            quota: self.quota,
+            backend: Arc::clone(&self.backend),
+        }
+    }
 }
 
 impl<B: RateLimitBackend> RateLimiter<B> {
@@ -133,18 +146,21 @@ pub use keyed::KeyedRateLimiter;
 
 #[cfg(feature = "in-memory")]
 mod keyed {
+    use std::sync::Arc;
+
     use dashmap::DashMap;
 
-    use crate::RateLimiter;
     use crate::backend::RateLimitBackend;
     use crate::metrics::RateLimitResult;
     use crate::quota::Quota;
 
     /// Per-key rate limiter that tracks separate rate limits for each key.
     ///
-    /// Each key gets its own [`RateLimiter`] instance with either a
-    /// custom quota (set via [`with_quota_for_key`](KeyedRateLimiter::with_quota_for_key))
-    /// or the default quota.
+    /// Keys either use the default quota or a per-key override set via
+    /// [`with_quota_for_key`](KeyedRateLimiter::with_quota_for_key).
+    /// Overrides live in a `DashMap` consulted by borrowed key on every
+    /// check; the check decision itself is delegated straight to the
+    /// shared backend, so the warm path performs no allocation.
     ///
     /// # Example
     ///
@@ -163,52 +179,47 @@ mod keyed {
     ///     assert!(result.allowed);
     /// }
     /// ```
-    pub struct KeyedRateLimiter<B: RateLimitBackend + Clone> {
-        limiters: DashMap<String, RateLimiter<B>>,
+    pub struct KeyedRateLimiter<B: RateLimitBackend> {
+        /// Quota overrides for specific keys; keys without an override
+        /// use `default_quota`.
+        overrides: DashMap<String, Quota>,
         default_quota: Quota,
-        // Stored as Arc to avoid cloning the entire backend (e.g. DashMap)
-        // for every new key. RateLimiter already holds Arc<B> internally so
-        // per-key cost is just an atomic refcount bump.
-        backend: std::sync::Arc<B>,
+        // Shared by every key: the backend is behind an `Arc`, so the
+        // check path needs no clone of it (or of any limiter wrapper).
+        backend: Arc<B>,
     }
 
-    impl<B: RateLimitBackend + Clone> KeyedRateLimiter<B> {
+    impl<B: RateLimitBackend> KeyedRateLimiter<B> {
         /// Create a new keyed rate limiter with the given default quota and backend.
         pub fn new(default_quota: Quota, backend: B) -> Self {
             Self {
-                limiters: DashMap::new(),
+                overrides: DashMap::new(),
                 default_quota,
-                backend: std::sync::Arc::new(backend),
+                backend: Arc::new(backend),
             }
         }
 
         /// Override the rate limit quota for a specific key.
         ///
-        /// This replaces any existing limiter for the key. If the key
-        /// has not been seen yet, the next call to [`check`](KeyedRateLimiter::check)
-        /// will use this quota instead of the default.
+        /// This replaces any existing override for the key. The next call
+        /// to [`check`](KeyedRateLimiter::check) uses this quota.
         pub fn with_quota_for_key(&self, key: &str, quota: Quota) {
-            self.limiters.insert(
-                key.to_string(),
-                RateLimiter {
-                    quota,
-                    backend: std::sync::Arc::clone(&self.backend),
-                },
-            );
+            self.overrides.insert(key.to_owned(), quota);
         }
 
         /// Check whether the caller identified by `key` is allowed to proceed.
+        ///
+        /// The warm path (any repeated check) is allocation-free: the
+        /// override map is read by borrowed key, and the decision comes
+        /// straight from the shared backend — no per-key limiter is
+        /// materialized or cloned. The map guard is never held across
+        /// the backend `await`.
         pub async fn check(&self, key: &str) -> RateLimitResult {
-            let limiter = self
-                .limiters
-                .entry(key.to_string())
-                .or_insert_with(|| RateLimiter {
-                    quota: self.default_quota.clone(),
-                    backend: std::sync::Arc::clone(&self.backend),
-                })
-                .value()
-                .clone();
-            limiter.check(key).await
+            let quota = match self.overrides.get(key) {
+                Some(entry) => *entry.value(),
+                None => self.default_quota,
+            };
+            self.backend.check(key, &quota).await
         }
 
         /// Synchronous version of [`check`](KeyedRateLimiter::check).
@@ -224,6 +235,36 @@ mod keyed {
                 .build()
                 .expect("failed to create tokio runtime for sync check");
             rt.block_on(self.check(key))
+        }
+    }
+
+    #[cfg(test)]
+    mod keyed_tests {
+        use super::KeyedRateLimiter;
+
+        use crate::backend::InMemoryBackend;
+        use crate::quota::Quota;
+
+        #[tokio::test]
+        async fn warm_path_inserts_nothing() {
+            // Default-quota keys are never materialized in the override
+            // map: repeated checks stay a borrowed-key read (no
+            // allocation, no per-key limiter objects). Only
+            // `with_quota_for_key` writes.
+            let limiter = KeyedRateLimiter::new(Quota::per_second(10), InMemoryBackend::new());
+
+            limiter.check("warm").await;
+            limiter.check("warm").await;
+            assert!(
+                limiter.overrides.is_empty(),
+                "default-quota checks must not populate the override map"
+            );
+
+            limiter.with_quota_for_key("warm", Quota::per_second(2));
+            assert_eq!(limiter.overrides.len(), 1);
+            let r = limiter.check("warm").await;
+            assert!(r.allowed);
+            assert_eq!(r.limit, 2, "the override quota must apply");
         }
     }
 }

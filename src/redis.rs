@@ -76,7 +76,6 @@ impl RedisBackend {
     }
 }
 
-#[async_trait::async_trait]
 impl RateLimitBackend for RedisBackend {
     async fn check(&self, key: &str, quota: &Quota) -> RateLimitResult {
         let emission = quota.interval().as_millis() as u64;

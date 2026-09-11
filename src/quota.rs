@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 /// A rate limit quota expressed in the GCRA style.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Quota {
     /// Minimum interval between allowed requests.
     interval: Duration,
