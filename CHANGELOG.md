@@ -5,6 +5,13 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-05
+
+### Added
+- First stable release — API stabilization of the GCRA rate limiter:
+  Axum/Tower layer, `client_ip` identity resolution, and the
+  in-memory/SQLite/Redis backends.
+
 ## [0.4.1] - 2026-09-05
 
 ### Fixed

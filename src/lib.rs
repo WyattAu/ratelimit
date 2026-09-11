@@ -11,19 +11,21 @@
 //! # Quick Start
 //!
 //! ```no_run
+//! # #[cfg(feature = "in-memory")]
+//! # fn demo() {
 //! use throttle_kit::{RateLimiter, Quota, InMemoryBackend};
 //!
-//! #[tokio::main]
-//! async fn main() {
-//!     let backend = InMemoryBackend::new();
-//!     let limiter = RateLimiter::new(
-//!         Quota::per_second(10),
-//!         backend,
-//!     );
+//! # async fn run() {
+//! let backend = InMemoryBackend::new();
+//! let limiter = RateLimiter::new(
+//!     Quota::per_second(10),
+//!     backend,
+//! );
 //!
-//!     let result = limiter.check("user-123").await;
-//!     assert!(result.allowed);
-//! }
+//! let result = limiter.check("user-123").await;
+//! assert!(result.allowed);
+//! # }
+//! # }
 //! ```
 
 //! # Client identity (tower feature)
