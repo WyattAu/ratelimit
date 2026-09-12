@@ -5,6 +5,17 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-09-12
+
+### Added
+
+- `tests/config_matrix.rs` — per-knob behavior matrix for all 4 knob
+  groups (quota interval recovery timing, burst budget, client-IP trust
+  switching incl. hops/header override, missing-client policy +
+  key-extractor, per-key overrides). Deep edges were verified already
+  covered in `tests/client_ip.rs` / `tests/integration.rs`; no dead
+  knobs found.
+
 ## [1.1.1] - 2026-09-12
 
 ### Fixed
