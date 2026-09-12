@@ -1,6 +1,6 @@
 [package]
 name = "throttle-kit"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -56,6 +56,9 @@ criterion = { version = "0.5", features = ["html_reports"] }
 tokio = { version = "1", features = ["full"] }
 iai-callgrind = "0.16"
 redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+# redis_gcra_live.rs fail-open test: a throwaway container stopped mid-test.
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["redis"] }
 # Competitor for benches/head_to_head.rs (same GCRA algorithm).
 governor = { version = "0.10", default-features = false, features = ["std", "dashmap", "quanta"] }
 

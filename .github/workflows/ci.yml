@@ -25,6 +25,33 @@ jobs:
   # caches it; PRs compare against it with --fail-fast (first regression
   # fails the job). Baseline updates are INTENTIONAL — after merging a
   # deliberate perf change, the next main push refreshes the reference.
+  # Live Redis GCRA suite (tests/redis_gcra_live.rs): the Lua-script
+  # decision loop needs a real server — GitHub provides one as a service;
+  # locally, `docker run -p 6379:6379 redis:7` and run with `--ignored`.
+  integration:
+    name: Integration (live redis GCRA)
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The redis service covers the four quota tests; the fail-open test
+      # spins up its own throwaway container (docker preinstalled).
+      - name: live GCRA suite (fixture-gated)
+        run: cargo test --features redis --test redis_gcra_live -- --ignored --nocapture
+        env:
+          THROTTLE_KIT_REDIS_URL: redis://127.0.0.1:6379/
+
   perf-gate:
     runs-on: ubuntu-latest
     steps:

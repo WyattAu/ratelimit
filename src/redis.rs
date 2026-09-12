@@ -157,7 +157,11 @@ if now >= allow_at then
     local remaining = math.floor((new_tat - now) / emission)
     return {1, remaining, 0}
 else
-    local retry_after = math.ceil((allow_at - now) / 1000)
+    -- retry_after is in milliseconds, matching the Rust contract
+    -- (`RateLimitResult::retry_after` is a `Duration` built from this
+    -- value via `from_millis`). Dividing by 1000 here made denials
+    -- claim a retry window 1000x too short.
+    local retry_after = math.ceil(allow_at - now)
     return {0, 0, retry_after}
 end
 "#;

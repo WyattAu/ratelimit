@@ -140,6 +140,18 @@ stricter and safe. Callers keying by API keys instead of IP can use
 | Dependencies     | Minimal                 | Jitter + parking_lot            |
 | Burst support    | `.allow_burst()`        | Fixed per-quota                 |
 
+## Live Redis tests
+
+The Redis GCRA decision loop (`tests/redis_gcra_live.rs`) needs a real
+server, so it is fixture-gated like the rest of the estate:
+
+```sh
+docker run -d --name throttle-kit-redis -p 6379:6379 redis:7
+cargo test --features redis --test redis_gcra_live -- --ignored --nocapture
+```
+
+CI runs the same suite against a `redis:7` service automatically.
+
 ## License
 
 Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE)

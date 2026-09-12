@@ -5,6 +5,35 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-12
+
+### Fixed
+
+- **Redis GCRA `retry_after` was 1000× too small.** The Lua script
+  computed the retry window in seconds (`/ 1000`) while the Rust side
+  interpreted the return as milliseconds (`Duration::from_millis`), so a
+  denial after exhausting a 3/second quota claimed a ~0.3 ms window
+  instead of ~333 ms — clients retrying on `retry_after` hammered Redis.
+  The script now returns milliseconds to match the documented contract.
+  Caught by the new live integration suite.
+
+### Added
+
+- Live Redis GCRA integration suite (`tests/redis_gcra_live.rs`,
+  fixture-gated with `#[ignore]` following the estate's docker-gated
+  pattern): sequential allowance sequences with exact `remaining`
+  countdown and positive `retry_after` on denial, denial clearing after
+  the retry window, concurrency atomicity (40 concurrent checks against
+  burst 20 admit exactly 20 — the Lua decision loop holds), key
+  independence, and the fail-open contract on Redis command failures.
+  Run with `docker run -p 6379:6379 redis:7` and
+  `cargo test --features redis --test redis_gcra_live -- --ignored`.
+
+### CI
+
+- New `integration` job providing a `redis` service and running the
+  fixture-gated suite plus the self-contained fail-open test.
+
 ## [1.1.0] - 2026-09-11
 
 ### Changed
