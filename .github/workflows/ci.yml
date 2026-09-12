@@ -37,7 +37,7 @@ jobs:
         run: cargo install iai-callgrind-runner --locked
       - name: Restore main baseline
         if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: target/iai
           key: iai-baseline-main-notused-${{ github.run_id }}
@@ -50,7 +50,7 @@ jobs:
         run: cargo bench --bench iai_hot_path -- --baseline=main --fail-fast
       - name: Save baseline cache (push to main)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: target/iai
           key: iai-baseline-main-${{ github.run_id }}
