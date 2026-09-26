@@ -1,0 +1,14 @@
+# WyattAu dependency governance — cargo-audit configuration (security-audit
+# workflow). Mirrors the documented ignores in deny.toml; keep both in sync.
+
+[advisories]
+ignore = [
+    # tokio-tar PAX extended-header confusion (file smuggling, not memory
+    # unsafety). Dev-only: via testcontainers <- testcontainers-modules <-
+    # throttle-kit (integration-test containers); archives originate from
+    # trusted registries, not hostile input. tokio-tar is archived upstream
+    # and the fix (astral-tokio-tar) requires a testcontainers-side
+    # migration; no in-range upgrade exists. (Precedent: webhookkit.)
+    # TODO: drop when testcontainers switches off tokio-tar.
+    "RUSTSEC-2025-0111",
+]

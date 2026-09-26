@@ -7,6 +7,32 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+ignore = [
+    # tokio-tar PAX extended-header confusion (file smuggling, not memory
+    # unsafety). Dev-only: via testcontainers <- testcontainers-modules
+    # (integration-test containers); archives originate from trusted
+    # registries, not hostile input. tokio-tar is archived upstream and the
+    # fix (astral-tokio-tar) requires a testcontainers-side migration; no
+    # in-range upgrade exists. (Precedent: webhookkit.)
+    # TODO: drop when testcontainers switches off tokio-tar.
+    "RUSTSEC-2025-0111",
+    # bincode unmaintained (dev-only: iai-callgrind still depends on 1.3.3
+    # for runner IPC; no in-range upgrade exists).
+    # TODO: drop when iai-callgrind migrates off bincode 1.x.
+    "RUSTSEC-2025-0141",
+    # proc-macro-error2 unmaintained (dev-only: via iai-callgrind-macros;
+    # author confirms no further maintenance, no released successor
+    # dependency yet). (Precedent: cas-kit.)
+    # TODO: drop when iai-callgrind migrates off proc-macro-error2.
+    "RUSTSEC-2026-0173",
+    # rustls-pemfile unmaintained (not a vulnerability; latest release is a
+    # thin wrapper over rustls-pki-types' PEM parsing, which is the intended
+    # successor). Dev-only: via bollard <- testcontainers (integration-test
+    # containers), absent from every runtime graph. Fix belongs upstream in
+    # bollard; no in-range upgrade exists. (Precedent: webhookkit.)
+    # TODO: drop when bollard drops rustls-pemfile.
+    "RUSTSEC-2025-0134",
+]
 
 [licenses]
 version = 2
