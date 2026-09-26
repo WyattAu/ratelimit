@@ -58,10 +58,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install iai-callgrind runner
-        # valgrind is preinstalled on ubuntu-latest runners; iai-callgrind
-        # shells out to it (callgrind tool).
-        run: cargo install iai-callgrind-runner --locked
+      - name: Install valgrind + iai-callgrind runner
+        # iai-callgrind shells out to valgrind (callgrind tool); recent
+        # ubuntu-latest runner images (202609xx) no longer ship it
+        # preinstalled, which failed the bench with "cannot find binary
+        # path: 'valgrind'".
+        run: |
+          sudo apt-get update && sudo apt-get install -y valgrind
+          cargo install iai-callgrind-runner --locked
       - name: Restore main baseline
         if: github.event_name == 'pull_request'
         uses: actions/cache/restore@v4

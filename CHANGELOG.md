@@ -5,6 +5,27 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-26
+
+### Breaking
+
+- **`RateLimitBackend` is now intentionally not dyn-compatible** (semver
+  major: `trait_no_longer_dyn_compatible`). `check` uses native
+  `async fn` in trait (MSRV 1.85), returning
+  `impl Future<Output = RateLimitResult> + Send` — no future boxing and
+  no vtable call on the hot path. Every consumer in this crate is
+  generic over `B: RateLimitBackend`; for heterogeneous backend sets,
+  wrap the backends in your own enum rather than a `dyn` trait object.
+- **`Quota` now implements `Copy`** (semver major:
+  `copy_impl_added` — non-move closures now capture a `Quota` by
+  reference instead of moving it).
+
+### Fixed
+
+- ci: perf-gate now installs `valgrind` explicitly — recent
+  ubuntu-latest runner images no longer ship it preinstalled, which
+  failed every bench with "cannot find binary path: 'valgrind'".
+
 ## [1.1.2] - 2026-09-12
 
 ### Added
