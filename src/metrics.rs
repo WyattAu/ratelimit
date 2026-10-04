@@ -16,6 +16,22 @@ pub struct RateLimitResult {
 }
 
 impl RateLimitResult {
+    /// Requests left in the burst budget, token-bucket style.
+    ///
+    /// GCRA's `remaining` counts *conforming requests visible right now*
+    /// (floor of available time-budget in emission intervals), which is `1`
+    /// on a fresh key after its first request. Consumers porting from
+    /// fixed-window or token-bucket limiters — and clients reading
+    /// `X-RateLimit-Remaining` — expect the burst-consumed view instead:
+    /// `limit - consumed`, i.e. `burst - 1` after the first request of a
+    /// full burst.
+    ///
+    /// `limit - remaining` is exactly that value: `remaining` is the unused
+    /// time-budget fraction, so the difference is the consumed burst share.
+    pub fn remaining_burst(&self) -> u64 {
+        self.limit.saturating_sub(self.remaining)
+    }
+
     /// Build standard rate limit HTTP headers.
     ///
     /// Returns `(header_name, header_value)` pairs for:
@@ -34,5 +50,34 @@ impl RateLimitResult {
                     .to_string(),
             ),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remaining_burst_matches_burst_consumed_view() {
+        let r = RateLimitResult {
+            allowed: true,
+            remaining: 1,
+            reset_at: Instant::now(),
+            limit: 60,
+            retry_after: None,
+        };
+        // Fresh key, first request of a 60-burst: 59 requests left.
+        assert_eq!(r.remaining_burst(), 59);
+
+        // Denied request reports zero visible budget → full burst consumed.
+        let denied = RateLimitResult {
+            allowed: false,
+            remaining: 0,
+            reset_at: Instant::now(),
+            limit: 60,
+            retry_after: Some(Duration::from_secs(30)),
+        };
+        assert_eq!(denied.remaining_burst(), 60);
+        assert_eq!(denied.remaining, 0);
     }
 }
