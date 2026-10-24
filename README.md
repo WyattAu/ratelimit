@@ -1,4 +1,5 @@
 # ratelimit
+[![Estate integration](https://github.com/WyattAu/estate-integration/actions/workflows/ci.yml/badge.svg)](https://github.com/WyattAu/estate-integration/actions/workflows/ci.yml)
 
 Rate limiting for Rust — **GCRA** (Generic Cell Rate Algorithm) with pluggable
 backends (in-memory, Redis) and optional
