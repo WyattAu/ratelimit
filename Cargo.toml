@@ -58,7 +58,7 @@ iai-callgrind = "0.16"
 redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
 # redis_gcra_live.rs fail-open test: a throwaway container stopped mid-test.
 testcontainers = "0.23"
-testcontainers-modules = { version = "0.11", features = ["redis"] }
+testcontainers-modules = { version = "0.12", features = ["redis"] }
 # Competitor for benches/head_to_head.rs (same GCRA algorithm).
 governor = { version = "0.10", default-features = false, features = ["std", "dashmap", "quanta"] }
 
