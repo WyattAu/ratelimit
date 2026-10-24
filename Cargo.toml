@@ -52,7 +52,7 @@ harness = false
 
 [dev-dependencies]
 proptest = "1"
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 tokio = { version = "1", features = ["full"] }
 iai-callgrind = "0.16"
 redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
