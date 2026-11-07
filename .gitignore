@@ -2,3 +2,4 @@
 *.crate
 fuzz/target
 fuzz/corpus
+proofs/.lake

@@ -28,6 +28,14 @@
 //! # }
 //! ```
 
+//! # Lean-proven GCRA core
+//!
+//! The integer-microsecond GCRA cell in [`gcra`] is the estate's
+//! authoritative implementation: its semantics are machine-checked in
+//! `proofs/` (Lean 4.35.0 + Mathlib, zero `sorry`). [`gcra_decide`] (the
+//! millisecond decision core behind the backends) implements the same
+//! algorithm under the `τ = (b−1)·T` integer configuration.
+
 //! # Client identity (tower feature)
 //!
 //! The Tower layer keys requests by the client's socket address by
@@ -40,6 +48,7 @@
 
 mod backend;
 mod error;
+mod gcra;
 mod metrics;
 mod quota;
 
@@ -76,6 +85,7 @@ pub use backend::InMemoryBackend;
 #[cfg_attr(docsrs, doc(cfg(feature = "test-util")))]
 pub use backend::NoopBackend;
 pub use backend::{RateLimitBackend, gcra_decide};
+pub use gcra::{GcraCell, GcraOutcome, GcraParams, gcra_conforms_us, gcra_step_us};
 
 pub use error::RateLimitError;
 pub use metrics::RateLimitResult;
