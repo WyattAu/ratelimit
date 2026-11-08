@@ -1,0 +1,19 @@
+# ratelimit (throttle-kit)
+
+> Rate limiting for Rust: GCRA (Generic Cell Rate Algorithm) with pluggable
+> backends (in-memory default; sliding-window, Redis, and SQLite optional) and
+> an optional Tower layer with `X-RateLimit-*` headers and trusted-proxy
+> client-IP identity resolution (REQ-THROTTLE-100..104).
+
+## Docs
+
+- [README.md](README.md): GCRA semantics, feature flags, quick start, Tower integration, performance.
+- [REQUIREMENTS.md](REQUIREMENTS.md): numbered requirements REQ-THROTTLE-100..104 with test traceability.
+- [THREAT-MODEL.md](THREAT-MODEL.md): threat model.
+- [PERF-SLO.md](PERF-SLO.md): performance SLOs and benchmark methodology.
+- [COMPARISON.md](COMPARISON.md): head-to-head comparison with governor.
+- [COVERAGE-NOTES.md](COVERAGE-NOTES.md): coverage notes.
+- [SECURITY.md](SECURITY.md): security policy.
+- [CHANGELOG.md](CHANGELOG.md): release history.
+
+The GCRA correctness proofs (Lean) live in `proofs/`.

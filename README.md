@@ -179,3 +179,17 @@ caveat in PERF-SLO.md); instruction counts and allocation behavior are
 the authoritative before/after evidence.
 
 Head-to-head numbers against governor (the leading GCRA crate), with an honest feature comparison: [COMPARISON.md](COMPARISON.md).
+
+## Where the truth lives
+
+| Concern | File |
+|---|---|
+| GCRA semantics, feature flags, usage (normative) | `README.md` |
+| Requirements REQ-THROTTLE-100..104 + traceability | `REQUIREMENTS.md` |
+| Threat model | `THREAT-MODEL.md` |
+| Performance SLOs and benchmarks | `PERF-SLO.md` |
+| Head-to-head comparison with governor | `COMPARISON.md` |
+| Coverage notes | `COVERAGE-NOTES.md` |
+| GCRA correctness proofs (Lean) | `proofs/` |
+| Security policy | `SECURITY.md` |
+| Release history | `CHANGELOG.md` |
