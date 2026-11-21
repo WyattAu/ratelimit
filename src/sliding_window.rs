@@ -91,6 +91,26 @@ mod tests {
     use std::time::Duration;
 
     #[tokio::test]
+    async fn clone_shares_window_state() {
+        // Regression test for 3.0.1: the entry map was a bare DashMap,
+        // and tower frameworks clone limiters per request — DashMap
+        // clone deep-copies, so every cloned backend ran against a
+        // fresh empty window and limits silently never enforced.
+        let backend = SlidingWindowBackend::new();
+        let quota = Quota::per_minute(3);
+        let clone = backend.clone();
+
+        for _ in 0..3 {
+            assert!(backend.check("shared", &quota).await.allowed);
+        }
+        // The CLONE must see the exhausted budget.
+        assert!(
+            !clone.check("shared", &quota).await.allowed,
+            "cloned backend must share window state with the original"
+        );
+    }
+
+    #[tokio::test]
     async fn sliding_window_allows_requests_within_limit() {
         let backend = SlidingWindowBackend::new();
         let quota = Quota::per_second(3);
