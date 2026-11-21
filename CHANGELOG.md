@@ -5,6 +5,23 @@ Changelog](https://keepachangelog.com/); versions follow [semver](https://semver
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-11-21
+
+### Fixed
+
+- **In-memory backends now share state across clones.**
+  `SlidingWindowBackend` and `InMemoryBackend` held their entry maps in
+  a bare `DashMap`; tower frameworks clone limiters per request (axum
+  clones tower services into each call) and `DashMap` clone deep-copies,
+  so every request ran against a fresh empty window and the limiter
+  silently never enforced. Both maps are now `Arc`-backed — clones share
+  state (the sweep guard was already `Arc`). Found by a live security
+  audit of a consumer (Janus/ecom-engine) whose hand-rolled limiter
+  carried the identical bug; this crate inherited the pattern from the
+  same era. Consumers on 3.0.0 with tower-based wiring should treat
+  their rate limits as unenforced and upgrade.
+
+
 ## [2.0.0] - 2026-09-26
 
 ### Breaking

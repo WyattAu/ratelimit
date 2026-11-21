@@ -10,16 +10,21 @@ use crate::quota::Quota;
 /// Tracks request timestamps in a deque and counts requests within
 /// the current time window. Rejects requests when the count exceeds
 /// the quota's burst limit.
+///
+/// The entry map is `Arc`-backed: tower frameworks clone limiters per
+/// request (axum clones tower services into each call), and a bare
+/// `DashMap` clone deep-copies — every request would then run against
+/// a fresh empty window and the limiter would silently never enforce.
 #[derive(Clone)]
 pub struct SlidingWindowBackend {
-    entries: dashmap::DashMap<String, VecDeque<Instant>>,
+    entries: std::sync::Arc<dashmap::DashMap<String, VecDeque<Instant>>>,
 }
 
 impl SlidingWindowBackend {
     /// Create a new sliding window backend.
     pub fn new() -> Self {
         Self {
-            entries: dashmap::DashMap::new(),
+            entries: std::sync::Arc::new(dashmap::DashMap::new()),
         }
     }
 }

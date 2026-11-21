@@ -95,8 +95,14 @@ pub fn gcra_decide(
 /// pure core [`gcra_decide`], matching the Redis GCRA backend's semantics.
 #[cfg(feature = "in-memory")]
 #[derive(Clone)]
+/// In-memory GCRA backend.
+///
+/// The entry map is `Arc`-backed: tower frameworks clone limiters per
+/// request (axum clones tower services into each call), and a bare
+/// `DashMap` clone deep-copies — every request would then run against
+/// a fresh empty map and the limiter would silently never enforce.
 pub struct InMemoryBackend {
-    entries: dashmap::DashMap<String, Entry>,
+    entries: std::sync::Arc<dashmap::DashMap<String, Entry>>,
 }
 
 #[cfg(feature = "in-memory")]
@@ -155,7 +161,7 @@ impl InMemoryBackend {
     /// Create a new in-memory backend.
     pub fn new() -> Self {
         Self {
-            entries: dashmap::DashMap::new(),
+            entries: std::sync::Arc::new(dashmap::DashMap::new()),
         }
     }
 }
